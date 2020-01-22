@@ -69,27 +69,27 @@ func (user *User) ping(ctx context.Context) error {
 /* Listen on any messages destined to the user through its toUser channel,
 and write them to the user. Will die if context is canceled or on write failure. */
 func (user *User) listenOutgoing(ctx context.Context) {
-	// TODO: don't hardcode ping ticker
-	ticker := time.NewTicker(time.Second * 10)
+	ticker := time.NewTicker(user.options.PingFrequency)
 	for {
 		select {
 		case <-ctx.Done():
+			// Context dropped (Upgraded request may have been killed)
 			fmt.Println("User: listen outgoing context finished")
 			return
-			// Ping user
 		case <-ticker.C:
-			// TODO: don't hardcode ping timeout
-			pingctx, cancel := context.WithTimeout(ctx, time.Second*10)
+			// Ping the user and wait for a pong back. Assume dead if no response.
+			pingctx, cancel := context.WithTimeout(ctx, user.options.PingTimeout)
 			err := user.ping(pingctx)
 			cancel()
 			if err != nil {
 				user.connection.Close(websocket.StatusNormalClosure, "Ping unsuccessful")
-				user.closed <- fmt.Errorf("User: ping failed: %w", err)
+				user.closed <- fmt.Errorf("Ping failed: %w", err)
 				return
 			}
 		case message := <-user.toUser:
 			err := user.writeMessage(ctx, &message)
 			if err != nil {
+				// TODO: Distinguish between different error types
 				user.connection.Close(websocket.StatusInternalError, "Write failure")
 				user.closed <- err
 				return

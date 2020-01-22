@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"time"
 
 	"golang.org/x/time/rate"
 	"nhooyr.io/websocket"
@@ -33,8 +34,12 @@ type Options struct {
 	// Limiter used against incoming client messages.
 	RateLimiter *rate.Limiter
 
-	// Handler for chat messages
 	ChatMessageHandler MessageHandler
+
+	// Determines how frequently users are pinged.
+	PingFrequency time.Duration
+	// Determines how long to wait on a ping before assuming the connection is dead.
+	PingTimeout time.Duration
 }
 
 // Party represents a group of users connected in a socket session.

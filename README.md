@@ -21,7 +21,6 @@ party.Stop <- true
 ```
 
 ### TODO:
-* Ping pong
 * Message destination
 * Add ready message
 * Add join name message
