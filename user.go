@@ -70,12 +70,6 @@ func (user *User) ping(ctx context.Context) error {
 /* Listen on any messages destined to the user through its toUser channel,
 and write them to the user. Will die if context is canceled or on write failure. */
 func (user *User) listenOutgoing(ctx context.Context) {
-	if user.options.PingFrequency == 0 {
-		user.options.PingFrequency = 10 * time.Second
-	}
-	if user.options.PingTimeout == 0 {
-		user.options.PingTimeout = 10 * time.Second
-	}
 	ticker := time.NewTicker(user.options.PingFrequency)
 	for {
 		select {

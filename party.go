@@ -12,6 +12,12 @@ import (
 
 // NewParty creates a new room for users to join.
 func NewParty(name string, options *Options) *Party {
+	if options.PingFrequency == 0 {
+		options.PingFrequency = 10 * time.Second
+	}
+	if options.PingTimeout == 0 {
+		options.PingTimeout = 10 * time.Second
+	}
 	return &Party{
 		Name:           name,
 		Options:        options,
