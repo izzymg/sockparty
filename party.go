@@ -74,6 +74,7 @@ func (party *Party) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	user, err := newUser(
 		fmt.Sprintf("User"),
 		conn,
+		party.Options,
 	)
 
 	fmt.Printf("User %s joined\n", user.ID)
@@ -155,7 +156,7 @@ or the user to close before deleting it and returning. */
 func (party *Party) processUser(ctx context.Context, user *User) error {
 
 	// Begin processing incoming and outgoing data.
-	go user.listenIncoming(ctx, party.Options.RateLimiter)
+	go user.listenIncoming(ctx)
 	go user.listenOutgoing(ctx)
 
 	for {

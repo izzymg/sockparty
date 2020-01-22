@@ -13,7 +13,7 @@ import (
 )
 
 // Create a new user from a websocket connection. Generates it a new unique ID for lookups.
-func newUser(name string, connection *websocket.Conn) (*User, error) {
+func newUser(name string, connection *websocket.Conn, options *Options) (*User, error) {
 	uid, err := uuid.NewRandom()
 	if err != nil {
 		return nil, fmt.Errorf("Failed to generate a UUID for a new user: %w", err)
@@ -21,6 +21,7 @@ func newUser(name string, connection *websocket.Conn) (*User, error) {
 	return &User{
 		Name:       name,
 		ID:         uid.String(),
+		options:    options,
 		connection: connection,
 		closed:     make(chan error),
 		// TODO: add buffers here
@@ -33,6 +34,7 @@ func newUser(name string, connection *websocket.Conn) (*User, error) {
 type User struct {
 	ID         string
 	Name       string
+	options    *Options
 	connection *websocket.Conn
 	closed     chan error
 	fromUser   chan Message
@@ -98,7 +100,9 @@ func (user *User) listenOutgoing(ctx context.Context) {
 
 /* Listen on all incoming JSON messages from the client, writing them into the users'
 fromUser channel. Will die if the context is canceled or read message fails. */
-func (user *User) listenIncoming(ctx context.Context, limiter *rate.Limiter) {
+func (user *User) listenIncoming(ctx context.Context) {
+
+	limiter := user.options.RateLimiter
 	if limiter == nil {
 		limiter = rate.NewLimiter(rate.Inf, 1)
 	}
