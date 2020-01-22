@@ -3,6 +3,7 @@ package sockparty
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"golang.org/x/time/rate"
 	"nhooyr.io/websocket"
@@ -57,14 +58,33 @@ func (user *User) readMessage(ctx context.Context) (*Message, error) {
 	return message, nil
 }
 
+// Blocks until user responds
+func (user *User) ping(ctx context.Context) error {
+	fmt.Printf("User: Pinging user %s\n", user.ID)
+	return user.connection.Ping(ctx)
+}
+
 /* Listen on any messages destined to the user through its toUser channel,
 and write them to the user. Will die if context is canceled or on write failure. */
 func (user *User) listenOutgoing(ctx context.Context) {
+	// TODO: don't hardcode ping ticker
+	ticker := time.NewTicker(time.Second * 10)
 	for {
 		select {
 		case <-ctx.Done():
 			fmt.Println("User: listen outgoing context finished")
 			return
+			// Ping user
+		case <-ticker.C:
+			// TODO: don't hardcode ping timeout
+			pingctx, cancel := context.WithTimeout(ctx, time.Second*10)
+			err := user.ping(pingctx)
+			cancel()
+			if err != nil {
+				user.connection.Close(websocket.StatusNormalClosure, "Ping unsuccessful")
+				user.closed <- fmt.Errorf("User: ping failed: %w", err)
+				return
+			}
 		case message := <-user.toUser:
 			err := user.writeMessage(ctx, &message)
 			if err != nil {
