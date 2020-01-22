@@ -1,4 +1,4 @@
-package sockroom
+package sockparty
 
 import (
 	"context"

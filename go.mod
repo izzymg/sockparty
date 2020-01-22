@@ -1,4 +1,4 @@
-module github.com/izzymg/sockroom
+module github.com/izzymg/sockparty
 
 go 1.13
 

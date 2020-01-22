@@ -1,9 +1,9 @@
-package sockroom_test
+package sockparty_test
 
 import (
 	"context"
 	"fmt"
-	"github.com/izzymg/sockroom"
+	"github.com/izzymg/sockparty"
 	"net/http"
 	"testing"
 	"time"
@@ -71,7 +71,7 @@ func TestConnect(t *testing.T) {
 		Message: "beep",
 	}
 
-	party := sockroom.NewParty("Sick room dudes", &sockroom.Options{
+	party := sockparty.NewParty("Sick room dudes", &sockparty.Options{
 		RateLimiter:   rate.NewLimiter(rate.Every(time.Millisecond*100), 5),
 		AllowedOrigin: "http://localhost:80",
 	})
