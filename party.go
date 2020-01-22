@@ -14,11 +14,15 @@ func NewParty(name string, options *Options) *Party {
 	return &Party{
 		Name:           name,
 		Options:        options,
+		Stop:           make(chan bool),
+		Broadcast:      make(chan Message),
+		MessageUser:    make(chan Message),
 		connectedUsers: make(map[string]*User),
 		addUser:        make(chan *User),
 		deleteUser:     make(chan *User),
-		Stop:           make(chan bool),
-		broadcast:      make(chan Message),
+		handlers: map[string]MessageHandler{
+			ChatMessage: options.ChatMessageHandler,
+		},
 	}
 }
 
@@ -28,23 +32,30 @@ type Options struct {
 	AllowedOrigin string
 	// Limiter used against incoming client messages.
 	RateLimiter *rate.Limiter
+
+	// Handler for chat messages
+	ChatMessageHandler MessageHandler
 }
 
 // Party represents a group of users connected in a socket session.
 type Party struct {
-
 	// Human readable name of the party
 	Name string
 	// Configuration options for the party
 	Options *Options
 	// Close or send to this channel to stop the party from running
+	Stop chan bool
+	// Write a message to the user at ID of the message's destination
+	MessageUser chan Message
+	// Broadcast message to all users
+	Broadcast chan Message
 
-	Stop           chan bool
+	// Connections currently active in this party
 	connectedUsers map[string]*User
-	addUser        chan *User
-	deleteUser     chan *User
-	messageUser    chan Message
-	broadcast      chan Message
+
+	addUser    chan *User
+	deleteUser chan *User
+	handlers   map[string]MessageHandler
 }
 
 /*ServeHTTP handles an HTTP request to join the room and upgrade to WebSocket. As this adds users to the party,
@@ -106,7 +117,7 @@ func (party *Party) Listen() {
 			delete(party.connectedUsers, user.ID)
 			fmt.Printf("Party: removed user %s\n", user.ID)
 
-		case message := <-party.broadcast:
+		case message := <-party.Broadcast:
 			// Broadcast message to all users in map
 			for _, user := range party.connectedUsers {
 				select {
@@ -119,7 +130,7 @@ func (party *Party) Listen() {
 				}
 			}
 
-		case message := <-party.messageUser:
+		case message := <-party.MessageUser:
 			// Message single user using the destination field
 			user, ok := party.connectedUsers[message.Destination]
 			if !ok {
@@ -153,8 +164,8 @@ func (party *Party) processUser(ctx context.Context, user *User) error {
 			party.deleteUser <- user
 			return fmt.Errorf("Party: process user closed: %w", err)
 		case message := <-user.fromUser:
-			fmt.Printf("Party: message %v\n", message)
-			party.broadcast <- message
+			handler := party.handlers[message.Event]
+			fmt.Printf("Party: message %v, handler: %v\n", message, handler)
 		}
 	}
 }

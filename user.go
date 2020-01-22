@@ -11,13 +11,6 @@ import (
 	"github.com/google/uuid"
 )
 
-// Message is a struct needing documentation and a new home.
-type Message struct {
-	Event       string      `json:"event"`
-	Destination string      `json:"destination"`
-	Payload     interface{} `json:"payload"`
-}
-
 // Create a new user from a websocket connection. Generates it a new unique ID for lookups.
 func newUser(name string, connection *websocket.Conn) (*User, error) {
 	uid, err := uuid.NewRandom()
