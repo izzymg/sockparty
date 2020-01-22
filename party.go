@@ -1,4 +1,4 @@
-package party
+package sockroom
 
 import (
 	"context"
@@ -6,24 +6,33 @@ import (
 	"net/http"
 	"sync"
 
+	"golang.org/x/time/rate"
 	"nhooyr.io/websocket"
 )
 
-// NewRoom creates a new room for users to join.
-func NewRoom(name string, allowedOrigin string) *Party {
+// NewParty creates a new room for users to join.
+func NewParty(name string, options *Options) *Party {
 	return &Party{
 		Name:           name,
+		Options:        options,
 		connectedUsers: make(map[string]*User),
-		allowedOrigin:  allowedOrigin,
 	}
+}
+
+// Options configures a party's settings.
+type Options struct {
+	// The origin header that must be present for users to connect.
+	AllowedOrigin string
+	// Limiter used against incoming client messages.
+	RateLimiter *rate.Limiter
 }
 
 // Party represents a group of users connected in a socket session.
 type Party struct {
 	Name           string
+	Options        *Options
 	connectedUsers map[string]*User
 	mut            sync.Mutex
-	allowedOrigin  string
 }
 
 // ServeHTTP handles an HTTP request to join the room and upgrade to WebSocket.
@@ -84,7 +93,10 @@ func (party *Party) deleteUser(id string) {
 	delete(party.connectedUsers, id)
 }
 
-// Process user begins processing the user's requests, blocking.
+/* Process user begins processing the user's requests.
+If the HTTP request is canceled for any reason, the context will go with it,
+cascading and cleaning up. This function blocks, waiting for any messages from the user
+or the user to close before deleting it and returning. */
 func (party *Party) processUser(ctx context.Context, id string) error {
 
 	// Grab user by ID
@@ -93,7 +105,8 @@ func (party *Party) processUser(ctx context.Context, id string) error {
 		return fmt.Errorf("Failed to find user by ID key %v", id)
 	}
 
-	go user.listenIncoming(ctx)
+	// Begin processing incoming and outgoing data.
+	go user.listenIncoming(ctx, party.Options.RateLimiter)
 	go user.listenOutgoing(ctx)
 
 	for {
@@ -108,6 +121,7 @@ func (party *Party) processUser(ctx context.Context, id string) error {
 	}
 }
 
+// Write a message out to a user in the party by their ID.
 func (party *Party) messageUser(id string, message Message) error {
 	fmt.Printf("Party: messaging %s\n", id)
 	user := party.getUser(id)
@@ -115,6 +129,8 @@ func (party *Party) messageUser(id string, message Message) error {
 		return fmt.Errorf("Message user failed, no such user %s", id)
 	}
 
+	// Don't block if the user isn't available.
+	// TODO: Timeout here.
 	select {
 	case user.toUser <- message:
 		fmt.Println("Party: Message user successful")
@@ -124,13 +140,15 @@ func (party *Party) messageUser(id string, message Message) error {
 	return nil
 }
 
-// Iterates over all connected users in this room and sends data to them.
+// Iterates over all connected users in this party and sends data to them.
 func (party *Party) broadcast(message Message) {
 	fmt.Println("Party: broadcasting")
 	party.mut.Lock()
 	defer party.mut.Unlock()
 	for _, user := range party.connectedUsers {
 		select {
+		// Don't block if the user isn't available.
+		// TODO: Timeout here.
 		case user.toUser <- message:
 			fmt.Println("Party: broadcast successful")
 		default:

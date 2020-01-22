@@ -1,9 +1,8 @@
-package party
+package sockroom
 
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"golang.org/x/time/rate"
 	"nhooyr.io/websocket"
@@ -12,13 +11,13 @@ import (
 	"github.com/google/uuid"
 )
 
-// Message is a struct needing documentation
+// Message is a struct needing documentation and a new home.
 type Message struct {
 	Event   string      `json:"event"`
 	Payload interface{} `json:"payload"`
 }
 
-// Create a new user from a websocket connection.
+// Create a new user from a websocket connection. Generates it a new unique ID for lookups.
 func newUser(name string, connection *websocket.Conn) (*User, error) {
 	uid, err := uuid.NewUUID()
 	if err != nil {
@@ -64,6 +63,8 @@ func (user *User) readMessage(ctx context.Context) (*Message, error) {
 	return message, nil
 }
 
+/* Listen on any messages destined to the user through its toUser channel,
+and write them to the user. Will die if context is canceled or on write failure. */
 func (user *User) listenOutgoing(ctx context.Context) {
 	for {
 		select {
@@ -80,22 +81,32 @@ func (user *User) listenOutgoing(ctx context.Context) {
 	}
 }
 
-func (user *User) listenIncoming(ctx context.Context) {
-	limiter := rate.NewLimiter(rate.Every(time.Millisecond*500), 1)
+/* Listen on all incoming JSON messages from the client, writing them into the users'
+fromUser channel. Will die if the context is canceled or read message fails. */
+func (user *User) listenIncoming(ctx context.Context, limiter *rate.Limiter) {
+	if limiter == nil {
+		limiter = rate.NewLimiter(rate.Inf, 1)
+	}
+
 	for {
 		select {
+		// Make sure the context isn't dead
 		case <-ctx.Done():
 			fmt.Println("User: listen incoming context finished")
 			return
 		default:
+			// Wait for the limiter
 			err := limiter.Wait(ctx)
 			if err != nil {
 				fmt.Println(fmt.Errorf("User rate limit error: %w", err))
 				continue
 			}
+			// Read any JSON
 			message, err := user.readMessage(ctx)
 			if err != nil {
 				fmt.Printf("User: listen incoming closed: %v\n", err)
+				// Indicate the user is dead with an error
+				// TODO: check what kind of error and handle appropriately
 				user.closed <- err
 				return
 			}
