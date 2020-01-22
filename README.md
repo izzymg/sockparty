@@ -5,17 +5,17 @@ Sockparty is a test implementation of a websocket chat-room with Golang and [nho
 ### Example
 
 ```go
-	party := sockparty.NewParty("A new room", &sockparty.Options{
-		RateLimiter:   rate.NewLimiter(rate.Every(time.Millisecond*100), 5),
-		AllowedOrigin: "http://localhost:80",
-    })
-    
-    go party.Listen()
+party := sockparty.NewParty("A new room", &sockparty.Options{
+	RateLimiter:   rate.NewLimiter(rate.Every(time.Millisecond*100), 5),
+	AllowedOrigin: "http://localhost:80",
+})
 
-    // Party implements http.Handler, will upgrade requests to WebSocket
-    router.Get("/newRoom", party)
+go party.Listen()
 
-    fmt.Println(party.GetConnectedUserCount())
+// Party implements http.Handler, will upgrade requests to WebSocket
+router.Get("/newRoom", party)
 
-    party.Stop <- true
+fmt.Println(party.GetConnectedUserCount())
+
+party.Stop <- true
 ```
