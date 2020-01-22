@@ -1,4 +1,4 @@
-package examples
+package main
 
 import (
 	"fmt"
@@ -11,7 +11,7 @@ import (
 
 /* Chat room example with SockParty */
 
-func run() {
+func main() {
 
 	// Setup a new party with a rate limiter and allowed client origin
 	party := sockparty.NewParty("Party", &sockparty.Options{
