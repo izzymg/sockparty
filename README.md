@@ -19,3 +19,14 @@ fmt.Println(party.GetConnectedUserCount())
 
 party.Stop <- true
 ```
+
+### TODO:
+
+* Add adapter for logging events, instead of stdout
+* Better API control over channel buffer size
+* Dedicated message structure and event emitting
+* Add authentication function to parties
+fmt.Println(party.GetConnectedUserCount())
+
+party.Stop <- true
+```
