@@ -20,7 +20,7 @@ type Message struct {
 
 // Create a new user from a websocket connection. Generates it a new unique ID for lookups.
 func newUser(name string, connection *websocket.Conn) (*User, error) {
-	uid, err := uuid.NewUUID()
+	uid, err := uuid.NewRandom()
 	if err != nil {
 		return nil, fmt.Errorf("Failed to generate a UUID for a new user: %w", err)
 	}
