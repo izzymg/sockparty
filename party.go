@@ -138,7 +138,7 @@ func (party *Party) Listen() {
 
 		case message := <-party.MessageUser:
 			// Message single user using the destination field
-			user, ok := party.connectedUsers[message.Destination]
+			user, ok := party.connectedUsers[message.DestinationUser]
 			if !ok {
 				fmt.Println("Party: message to non-existent user")
 			}

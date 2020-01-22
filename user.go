@@ -57,6 +57,7 @@ func (user *User) readMessage(ctx context.Context) (*Message, error) {
 	if err != nil {
 		return nil, fmt.Errorf("Read JSON from user failed: %w", err)
 	}
+	message.SourceUser = user.ID
 	return message, nil
 }
 
