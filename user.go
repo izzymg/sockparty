@@ -13,8 +13,9 @@ import (
 
 // Message is a struct needing documentation and a new home.
 type Message struct {
-	Event   string      `json:"event"`
-	Payload interface{} `json:"payload"`
+	Event       string      `json:"event"`
+	Destination string      `json:"destination"`
+	Payload     interface{} `json:"payload"`
 }
 
 // Create a new user from a websocket connection. Generates it a new unique ID for lookups.
@@ -74,6 +75,7 @@ func (user *User) listenOutgoing(ctx context.Context) {
 		case message := <-user.toUser:
 			err := user.writeMessage(ctx, &message)
 			if err != nil {
+				user.connection.Close(websocket.StatusInternalError, "Write failure")
 				user.closed <- err
 				return
 			}
@@ -107,6 +109,7 @@ func (user *User) listenIncoming(ctx context.Context, limiter *rate.Limiter) {
 				fmt.Printf("User: listen incoming closed: %v\n", err)
 				// Indicate the user is dead with an error
 				// TODO: check what kind of error and handle appropriately
+				user.connection.Close(websocket.StatusInternalError, "Read failure")
 				user.closed <- err
 				return
 			}

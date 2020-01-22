@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"sync"
 
 	"golang.org/x/time/rate"
 	"nhooyr.io/websocket"
@@ -16,6 +15,10 @@ func NewParty(name string, options *Options) *Party {
 		Name:           name,
 		Options:        options,
 		connectedUsers: make(map[string]*User),
+		addUser:        make(chan *User),
+		deleteUser:     make(chan *User),
+		Stop:           make(chan bool),
+		broadcast:      make(chan Message),
 	}
 }
 
@@ -29,13 +32,23 @@ type Options struct {
 
 // Party represents a group of users connected in a socket session.
 type Party struct {
-	Name           string
-	Options        *Options
+
+	// Human readable name of the party
+	Name string
+	// Configuration options for the party
+	Options *Options
+	// Close or send to this channel to stop the party from running
+
+	Stop           chan bool
 	connectedUsers map[string]*User
-	mut            sync.Mutex
+	addUser        chan *User
+	deleteUser     chan *User
+	messageUser    chan Message
+	broadcast      chan Message
 }
 
-// ServeHTTP handles an HTTP request to join the room and upgrade to WebSocket.
+/*ServeHTTP handles an HTTP request to join the room and upgrade to WebSocket. As this adds users to the party,
+it will block indefinitely if the party is not currently listening. */
 func (party *Party) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	fmt.Println("Party: got request")
 
@@ -46,18 +59,23 @@ func (party *Party) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	// Add the user to the party
+	// Generate a new user structure
 	user, err := newUser(
 		fmt.Sprintf("User %d", party.GetConnectedUserCount()),
 		conn,
 	)
+
+	fmt.Printf("User %s: %s joined\n", user.Name, user.ID)
+
 	if err != nil {
 		fmt.Printf("Party: Failed to create new user: %v", err)
 		conn.Close(websocket.StatusInternalError, "User creation failure.")
 		return
 	}
-	party.addUser(user)
-	err = party.processUser(req.Context(), user.ID)
+
+	// Add the user and begin processing
+	party.addUser <- user
+	err = party.processUser(req.Context(), user)
 	if err != nil {
 		fmt.Println(err)
 	}
@@ -68,42 +86,62 @@ func (party *Party) GetConnectedUserCount() int {
 	return len(party.connectedUsers)
 }
 
-// Adds a new user to the room. Dumb op.
-func (party *Party) addUser(user *User) {
-	fmt.Printf("Party: adding user %s\n", user.ID)
-	// Add the connected user
-	party.mut.Lock()
-	defer party.mut.Unlock()
-	party.connectedUsers[user.ID] = user
-}
+/*Listen listens on the party's data channels and process any requests related to users.
+This blocks, and can be stopped by closing the party's Stop channel field. */
+func (party *Party) Listen() {
+	for {
+		select {
 
-// Grabs a user by their ID, or nil if they don't exist.
-func (party *Party) getUser(id string) *User {
-	fmt.Printf("Party: fetching user %s\n", id)
-	party.mut.Lock()
-	defer party.mut.Unlock()
-	return party.connectedUsers[id]
-}
+		case <-party.Stop:
+			fmt.Println("Party stopped")
+			return
 
-// Removes a user from the list of connected users. Performs no cleanup - dumb op.
-func (party *Party) deleteUser(id string) {
-	fmt.Printf("Party: deleting user %s\n", id)
-	party.mut.Lock()
-	defer party.mut.Unlock()
-	delete(party.connectedUsers, id)
+		case user := <-party.addUser:
+			// Add user to map
+			party.connectedUsers[user.ID] = user
+			fmt.Printf("Party: added user %s\n", user.ID)
+
+		case user := <-party.deleteUser:
+			// Remove user from map
+			delete(party.connectedUsers, user.ID)
+			fmt.Printf("Party: removed user %s\n", user.ID)
+
+		case message := <-party.broadcast:
+			// Broadcast message to all users in map
+			for _, user := range party.connectedUsers {
+				select {
+				// Don't block if the user isn't available.
+				// TODO: Timeout here.
+				case user.toUser <- message:
+					fmt.Println("Party: broadcast successful")
+				default:
+					fmt.Printf("Party: broadcast to user %s skipped, no receiver\n", user.ID)
+				}
+			}
+
+		case message := <-party.messageUser:
+			// Message single user using the destination field
+			user, ok := party.connectedUsers[message.Destination]
+			if !ok {
+				fmt.Println("Party: message to non-existent user")
+			}
+			// Don't block if the user isn't available.
+			// TODO: Timeout here.
+			select {
+			case user.toUser <- message:
+				fmt.Printf("Party: messaged user %s\n", user.ID)
+			default:
+				fmt.Printf("Party: user %s not receiving message\n", user.ID)
+			}
+		}
+	}
 }
 
 /* Process user begins processing the user's requests.
 If the HTTP request is canceled for any reason, the context will go with it,
 cascading and cleaning up. This function blocks, waiting for any messages from the user
 or the user to close before deleting it and returning. */
-func (party *Party) processUser(ctx context.Context, id string) error {
-
-	// Grab user by ID
-	user := party.getUser(id)
-	if user == nil {
-		return fmt.Errorf("Failed to find user by ID key %v", id)
-	}
+func (party *Party) processUser(ctx context.Context, user *User) error {
 
 	// Begin processing incoming and outgoing data.
 	go user.listenIncoming(ctx, party.Options.RateLimiter)
@@ -112,47 +150,11 @@ func (party *Party) processUser(ctx context.Context, id string) error {
 	for {
 		select {
 		case err := <-user.closed:
-			party.deleteUser(user.ID)
+			party.deleteUser <- user
 			return fmt.Errorf("Party: process user closed: %w", err)
 		case message := <-user.fromUser:
 			fmt.Printf("Party: message %v\n", message)
-			party.broadcast(message)
-		}
-	}
-}
-
-// Write a message out to a user in the party by their ID.
-func (party *Party) messageUser(id string, message Message) error {
-	fmt.Printf("Party: messaging %s\n", id)
-	user := party.getUser(id)
-	if user == nil {
-		return fmt.Errorf("Message user failed, no such user %s", id)
-	}
-
-	// Don't block if the user isn't available.
-	// TODO: Timeout here.
-	select {
-	case user.toUser <- message:
-		fmt.Println("Party: Message user successful")
-	default:
-		fmt.Println("Party: Message user skipped, no receiver")
-	}
-	return nil
-}
-
-// Iterates over all connected users in this party and sends data to them.
-func (party *Party) broadcast(message Message) {
-	fmt.Println("Party: broadcasting")
-	party.mut.Lock()
-	defer party.mut.Unlock()
-	for _, user := range party.connectedUsers {
-		select {
-		// Don't block if the user isn't available.
-		// TODO: Timeout here.
-		case user.toUser <- message:
-			fmt.Println("Party: broadcast successful")
-		default:
-			fmt.Println("Party: broadcast skipped, no receiver")
+			party.broadcast <- message
 		}
 	}
 }

@@ -20,11 +20,7 @@ type client struct {
 
 func (c *client) connect() error {
 
-	// Create a client to connect to the room with
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
-	defer cancel()
-
-	conn, _, err := websocket.Dial(ctx, c.Address, nil)
+	conn, _, err := websocket.Dial(context.TODO(), c.Address, nil)
 	if err != nil {
 		return fmt.Errorf("Websocket dial failed: %v", err)
 	}
@@ -79,6 +75,7 @@ func TestConnect(t *testing.T) {
 		RateLimiter:   rate.NewLimiter(rate.Every(time.Millisecond*100), 5),
 		AllowedOrigin: "http://localhost:80",
 	})
+	go party.Listen()
 
 	// TODO: get random free port
 	stop := makeServer(party, "localhost:3500")
@@ -91,13 +88,8 @@ func TestConnect(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	defer func() {
-		t.Log("Stopping clean")
-		stop <- true
-	}()
-
-	five := time.After(time.Second * 5)
-	six := time.After(time.Second * 6)
+	five := time.After(time.Second * 1)
+	six := time.After(time.Second * 2)
 
 	select {
 	case <-five:
@@ -118,9 +110,17 @@ func TestConnect(t *testing.T) {
 	for {
 		select {
 		case <-ticker.C:
-			wsjson.Write(context.Background(), client.Conn, message)
+			wsjson.Write(context.TODO(), client.Conn, message)
 		case <-timeout.C:
-			client.disconnect(websocket.StatusNormalClosure, "Cya")
+			ticker.Stop()
+			// Wait for flush
+			<-time.After(time.Second * 5)
+			err := client.disconnect(websocket.StatusNormalClosure, "Cya")
+			if err != nil {
+				t.Fatal(err)
+			}
+			party.Stop <- true
+			stop <- true
 			return
 		}
 	}
