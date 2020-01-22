@@ -1,10 +1,12 @@
 package party
 
 import (
+	"context"
 	"fmt"
 	"net/http"
-	"nhooyr.io/websocket"
 	"sync"
+
+	"nhooyr.io/websocket"
 )
 
 // NewRoom creates a new room for users to join.
@@ -46,7 +48,10 @@ func (party *Party) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 	party.addUser(user)
-	party.processUser(user.ID)
+	err = party.processUser(req.Context(), user.ID)
+	if err != nil {
+		fmt.Println(err)
+	}
 }
 
 // GetConnectedUserCount returns the number of currently connected users.
@@ -56,49 +61,67 @@ func (party *Party) GetConnectedUserCount() int {
 
 // Adds a new user to the room. Dumb op.
 func (party *Party) addUser(user *User) {
-	fmt.Println("Party: adding user")
+	fmt.Printf("Party: adding user %s\n", user.ID)
 	// Add the connected user
 	party.mut.Lock()
 	defer party.mut.Unlock()
 	party.connectedUsers[user.ID] = user
 }
 
-// Removes a user from the list of connected users. Performs no cleanup - dumb op.
-func (party *Party) deleteUser(ID string) {
-	fmt.Println("Party: deleting user")
+// Grabs a user by their ID, or nil if they don't exist.
+func (party *Party) getUser(id string) *User {
+	fmt.Printf("Party: fetching user %s\n", id)
 	party.mut.Lock()
 	defer party.mut.Unlock()
-	delete(party.connectedUsers, ID)
+	return party.connectedUsers[id]
+}
+
+// Removes a user from the list of connected users. Performs no cleanup - dumb op.
+func (party *Party) deleteUser(id string) {
+	fmt.Printf("Party: deleting user %s\n", id)
+	party.mut.Lock()
+	defer party.mut.Unlock()
+	delete(party.connectedUsers, id)
 }
 
 // Process user begins processing the user's requests, blocking.
-func (party *Party) processUser(ID string) error {
+func (party *Party) processUser(ctx context.Context, id string) error {
 
 	// Grab user by ID
-	user, ok := party.connectedUsers[ID]
-	if !ok {
-		return fmt.Errorf("Failed to find user by ID key %v", ID)
+	user := party.getUser(id)
+	if user == nil {
+		return fmt.Errorf("Failed to find user by ID key %v", id)
 	}
 
-	// Begin its processes
-	go user.startReading()
-	go user.startListening()
+	go user.listenIncoming(ctx)
+	go user.listenOutgoing(ctx)
 
-	// Block for processed data coming from the user
 	for {
 		select {
-		case message, ok := <-user.from:
-			if !ok {
-				fmt.Println("Party: reading ended")
-				party.mut.Lock()
-				party.deleteUser(user.ID)
-				party.mut.Unlock()
-				return nil
-			}
-			fmt.Println("Party: got data from user")
+		case err := <-user.closed:
+			party.deleteUser(user.ID)
+			return fmt.Errorf("Party: process user closed: %w", err)
+		case message := <-user.fromUser:
+			fmt.Printf("Party: message %v\n", message)
 			party.broadcast(message)
 		}
 	}
+}
+
+func (party *Party) messageUser(id string, message Message) error {
+	fmt.Printf("Party: messaging %s\n", id)
+	user := party.getUser(id)
+	if user == nil {
+		return fmt.Errorf("Message user failed, no such user %s", id)
+	}
+
+	select {
+	case user.toUser <- message:
+		fmt.Println("Party: Message user successful")
+	default:
+		fmt.Println("Party: Message user skipped, no receiver")
+	}
+	return nil
 }
 
 // Iterates over all connected users in this room and sends data to them.
@@ -107,6 +130,11 @@ func (party *Party) broadcast(message Message) {
 	party.mut.Lock()
 	defer party.mut.Unlock()
 	for _, user := range party.connectedUsers {
-		user.to <- message
+		select {
+		case user.toUser <- message:
+			fmt.Println("Party: broadcast successful")
+		default:
+			fmt.Println("Party: broadcast skipped, no receiver")
+		}
 	}
 }

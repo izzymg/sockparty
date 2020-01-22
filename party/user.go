@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/google/uuid"
+	"golang.org/x/time/rate"
 	"nhooyr.io/websocket"
 	"nhooyr.io/websocket/wsjson"
+
+	"github.com/google/uuid"
 )
 
 // Message is a struct needing documentation
@@ -26,8 +28,10 @@ func newUser(name string, connection *websocket.Conn) (*User, error) {
 		Name:       name,
 		ID:         uid.String(),
 		connection: connection,
-		to:         make(chan Message),
-		from:       make(chan Message),
+		closed:     make(chan error),
+		// TODO: add buffers here
+		fromUser: make(chan Message),
+		toUser:   make(chan Message),
 	}, nil
 }
 
@@ -35,48 +39,67 @@ func newUser(name string, connection *websocket.Conn) (*User, error) {
 type User struct {
 	ID         string
 	Name       string
-	from       chan Message
-	to         chan Message
 	connection *websocket.Conn
+	closed     chan error
+	fromUser   chan Message
+	toUser     chan Message
 }
 
-// Close the channels and user connection. Listen to user.from to catch this.
-func (user *User) close(code websocket.StatusCode, reason string) {
-	fmt.Println("User: closing")
-	close(user.from)
-	close(user.to)
-	user.connection.Close(code, reason)
+// Writes message to user
+func (user *User) writeMessage(ctx context.Context, message *Message) error {
+	err := wsjson.Write(ctx, user.connection, message)
+	if err != nil {
+		return fmt.Errorf("Write JSON to user failed: %w", err)
+	}
+	return nil
 }
 
-func (user *User) startReading() {
+// Blocks until next message and returns it
+func (user *User) readMessage(ctx context.Context) (*Message, error) {
+	message := &Message{}
+	err := wsjson.Read(ctx, user.connection, &message)
+	if err != nil {
+		return nil, fmt.Errorf("Read JSON from user failed: %w", err)
+	}
+	return message, nil
+}
+
+func (user *User) listenOutgoing(ctx context.Context) {
 	for {
-		// Read JSON incomming JSON events
-		message := Message{}
-		err := wsjson.Read(context.Background(), user.connection, &message)
-		// TODO: handle errors nicely
-		if err != nil {
-			fmt.Println(fmt.Errorf("User JSON WS read failed: %w", err))
-			user.close(websocket.StatusInternalError, "Client read failure")
+		select {
+		case <-ctx.Done():
+			fmt.Println("User: listen outgoing context finished")
 			return
+		case message := <-user.toUser:
+			err := user.writeMessage(ctx, &message)
+			if err != nil {
+				user.closed <- err
+				return
+			}
 		}
-		user.from <- message
 	}
 }
 
-/* Listen on the message to user channel and write all data out to the client. */
-func (user *User) startListening() {
+func (user *User) listenIncoming(ctx context.Context) {
+	limiter := rate.NewLimiter(rate.Every(time.Millisecond*500), 1)
 	for {
 		select {
-		case data, ok := <-user.to:
-			// Channel closed, stop listening
-			if !ok {
-				fmt.Println("User: Listening returning")
+		case <-ctx.Done():
+			fmt.Println("User: listen incoming context finished")
+			return
+		default:
+			err := limiter.Wait(ctx)
+			if err != nil {
+				fmt.Println(fmt.Errorf("User rate limit error: %w", err))
+				continue
+			}
+			message, err := user.readMessage(ctx)
+			if err != nil {
+				fmt.Printf("User: listen incoming closed: %v\n", err)
+				user.closed <- err
 				return
 			}
-			fmt.Println("User: writing JSON data")
-			ctx, cancel := context.WithTimeout(context.Background(), time.Second*6)
-			wsjson.Write(ctx, user.connection, &data)
-			cancel()
+			user.fromUser <- *message
 		}
 	}
 }

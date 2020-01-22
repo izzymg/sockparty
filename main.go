@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"sockroom/client"
 	"sockroom/party"
+	"time"
 )
 
 func main() {
@@ -22,10 +23,15 @@ func main() {
 
 	fmt.Println("Server up")
 
-	client.DoClient()
+	go client.DoClient()
 
-	select {
-	case <-stoppu:
-		return
+	ticker := time.NewTicker(time.Second * 5)
+	for {
+		select {
+		case <-stoppu:
+			return
+		case <-ticker.C:
+			fmt.Printf("Connected users: %d\n", party.GetConnectedUserCount())
+		}
 	}
 }

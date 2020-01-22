@@ -21,6 +21,13 @@ type message struct {
 // DoClient is a quick test implementation
 func DoClient() {
 
+	spam := &event{
+		Event: "chat_message",
+		Payload: message{
+			Message: "Spam!!!",
+		},
+	}
+
 	// Cancelable context with a 1min timeout
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
@@ -29,25 +36,24 @@ func DoClient() {
 	if err != nil {
 		panic(fmt.Errorf("Websocket dial failed: %v", err))
 	}
-
-	err = wsjson.Write(ctx, conn, &event{
-		Event: "chat_message",
-		Payload: message{
-			Message: "Hello from client",
-		},
-	})
+	defer conn.Close(websocket.StatusNormalClosure, "Bye!")
 
 	if err != nil {
 		panic(fmt.Errorf("WS JSON write failed: %v", err))
 	}
 
-	err = wsjson.Write(ctx, conn, &event{
-		Event: "chat_message",
-		Payload: message{
-			Message: "Bye bye from client",
-		},
-	})
+	err = wsjson.Write(ctx, conn, spam)
+	if err != nil {
+		fmt.Println(fmt.Errorf("Write fail: %w", err))
+	}
 
-	conn.Close(websocket.StatusNormalClosure, "Bye!")
+	err = wsjson.Write(ctx, conn, spam)
+	if err != nil {
+		fmt.Println(fmt.Errorf("Write fail: %w", err))
+	}
 
+	err = wsjson.Write(ctx, conn, spam)
+	if err != nil {
+		fmt.Println(fmt.Errorf("Write fail: %w", err))
+	}
 }
