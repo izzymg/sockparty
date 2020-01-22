@@ -3,15 +3,23 @@ package sockparty_test
 import (
 	"context"
 	"fmt"
-	"github.com/izzymg/sockparty"
 	"net/http"
 	"testing"
 	"time"
 
+	"github.com/izzymg/sockparty"
+
 	"golang.org/x/time/rate"
 	"nhooyr.io/websocket"
-	"nhooyr.io/websocket/wsjson"
 )
+
+var message = &struct {
+	Event   string `json:"event"`
+	Message string `json:"message"`
+}{
+	Event:   "bop",
+	Message: "beep",
+}
 
 type client struct {
 	Address string
@@ -61,15 +69,102 @@ func makeServer(handler http.Handler, address string) chan<- bool {
 	return stopServer
 }
 
-func TestConnect(t *testing.T) {
+func TestMany(t *testing.T) {
+	var clients []*websocket.Conn
 
-	message := &struct {
-		Event   string `json:"event"`
-		Message string `json:"message"`
-	}{
-		Event:   "bop",
-		Message: "beep",
+	party := sockparty.NewParty("many", &sockparty.Options{
+		AllowedOrigin: "http://localhost:80",
+		RateLimiter:   rate.NewLimiter(rate.Every(time.Millisecond*100), 3),
+	})
+	go party.Listen()
+
+	stop := makeServer(party, "localhost:3500")
+	defer func() {
+		stop <- true
+		party.Stop <- true
+	}()
+
+	for i := 0; i < 10; i++ {
+		conn, _, err := websocket.Dial(context.Background(), "ws://localhost:3500", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		clients = append(clients, conn)
 	}
+
+	<-time.After(time.Second * 3)
+
+	// catch up
+	connected := party.GetConnectedUserCount()
+	if connected != len(clients) {
+		t.Errorf("Expected %d connected, got %d", len(clients), connected)
+	}
+
+	for _, c := range clients {
+		err := c.Close(websocket.StatusNormalClosure, "Bye")
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	<-time.After(time.Second * 3)
+
+	connected = party.GetConnectedUserCount()
+	if connected != 0 {
+		t.Errorf("Expected 0 connected, got %d", connected)
+	}
+}
+
+func TestContexts(t *testing.T) {
+	party := sockparty.NewParty("Room room", &sockparty.Options{
+		AllowedOrigin: "http://localhost:80",
+	})
+
+	go party.Listen()
+
+	server := http.Server{
+		Addr:         "localhost:3500",
+		Handler:      party,
+		ReadTimeout:  time.Second * 2,
+		WriteTimeout: time.Second * 5,
+		IdleTimeout:  time.Second * 2,
+	}
+
+	go func() {
+		server.ListenAndServe()
+	}()
+
+	c := &client{
+		Address: "ws://localhost:3500",
+	}
+
+	err := c.connect()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+
+	go func() {
+		mt, message, err := c.Conn.Read(ctx)
+		if err == nil {
+			t.Fatal("Expected cancel")
+		}
+		t.Logf("Message type %v: %v", mt, message)
+	}()
+
+	for {
+		select {
+		case <-time.After(time.Second * 2):
+			cancel()
+			<-time.After(time.Second * 2)
+			party.Stop <- true
+			server.Shutdown(context.TODO())
+			return
+		}
+	}
+}
+
+func TestUpDown(t *testing.T) {
 
 	party := sockparty.NewParty("Sick room dudes", &sockparty.Options{
 		RateLimiter:   rate.NewLimiter(rate.Every(time.Millisecond*100), 5),
@@ -79,50 +174,30 @@ func TestConnect(t *testing.T) {
 
 	// TODO: get random free port
 	stop := makeServer(party, "localhost:3500")
-	client := &client{
+	c := &client{
 		Address: "ws://localhost:3500",
 	}
 
-	err := client.connect()
+	defer func() {
+		stop <- true
+	}()
+
+	err := c.connect()
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	five := time.After(time.Second * 1)
-	six := time.After(time.Second * 2)
+	one := time.After(time.Second * 1)
+	two := time.After(time.Second * 2)
 
 	select {
-	case <-five:
-		client.disconnect(websocket.StatusNormalClosure, "Bye")
-	case <-six:
+	case <-one:
+		c.disconnect(websocket.StatusNormalClosure, "Bye")
+	case <-two:
 		count := party.GetConnectedUserCount()
 		if count != 0 {
 			t.Fatalf("Expected 0 users, got %d", count)
 		}
 		return
 	}
-
-	client.connect()
-
-	// spam
-	ticker := time.NewTicker(time.Millisecond * 10)
-	timeout := time.NewTimer(time.Second * 2)
-	for {
-		select {
-		case <-ticker.C:
-			wsjson.Write(context.TODO(), client.Conn, message)
-		case <-timeout.C:
-			ticker.Stop()
-			// Wait for flush
-			<-time.After(time.Second * 5)
-			err := client.disconnect(websocket.StatusNormalClosure, "Cya")
-			if err != nil {
-				t.Fatal(err)
-			}
-			party.Stop <- true
-			stop <- true
-			return
-		}
-	}
-
 }

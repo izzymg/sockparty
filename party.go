@@ -61,11 +61,11 @@ func (party *Party) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 
 	// Generate a new user structure
 	user, err := newUser(
-		fmt.Sprintf("User %d", party.GetConnectedUserCount()),
+		fmt.Sprintf("User"),
 		conn,
 	)
 
-	fmt.Printf("User %s: %s joined\n", user.Name, user.ID)
+	fmt.Printf("User %s joined\n", user.ID)
 
 	if err != nil {
 		fmt.Printf("Party: Failed to create new user: %v", err)

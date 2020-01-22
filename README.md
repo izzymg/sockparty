@@ -22,6 +22,8 @@ party.Stop <- true
 
 ### TODO:
 
+* Add ready message
+* Add join name message
 * Add adapter for logging events, instead of stdout
 * Better API control over channel buffer size
 * Dedicated message structure and event emitting
