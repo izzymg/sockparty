@@ -7,8 +7,10 @@ type Message struct {
 	Payload     interface{} `json:"payload"`
 }
 
+// MessageHandler is a function type for callbacks receiving party messages.
 type MessageHandler func(party *Party, message *Message)
 
+// Event types
 const (
 	ChatMessage = "chat_message"
 )
