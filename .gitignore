@@ -1,4 +1,6 @@
 debug.test
 __debug*
 debug*
+*.exe
+prof
 .vscode

@@ -2,6 +2,7 @@ package sockparty_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -123,9 +124,11 @@ func BenchmarkBully(b *testing.B) {
 
 	// Echo back immediately
 	party.SetMessageEvent("message", func(party *sockparty.Party, message sockparty.IncomingMessage) {
+		var pay interface{}
+		json.Unmarshal(message.Payload, pay)
 		party.SendMessage <- sockparty.OutgoingMessage{
 			UserID:  message.UserID,
-			Payload: message.Payload,
+			Payload: pay,
 		}
 	})
 
@@ -156,12 +159,14 @@ func BenchmarkBully(b *testing.B) {
 	if err != nil {
 		panic(err)
 	}
+	defer conn.Close(websocket.StatusNormalClosure, "Bye")
 
-	b.StartTimer()
-	err = conn.Write(context.Background(), websocket.MessageText, []byte(`{ "event": "message" }`))
-	if err != nil {
-		panic(err)
+	for i := 0; i < 200; i++ {
+		err = conn.Write(context.Background(), websocket.MessageText, []byte(`{ "event": "message", "payload": { "message": "hey" } }`))
+		if err != nil {
+			panic(err)
+		}
+		conn.Read(context.Background())
 	}
-	conn.Read(context.Background())
-	b.StopTimer()
+
 }
