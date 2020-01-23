@@ -90,6 +90,10 @@ func (user *User) ping(ctx context.Context) error {
 and write them to the user. Will die if context is canceled or on write failure. */
 func (user *User) listenOutgoing(ctx context.Context) {
 	ticker := time.NewTicker(user.options.PingFrequency)
+	// Don't ping
+	if !user.options.DoPing {
+		ticker.Stop()
+	}
 	for {
 		select {
 		case <-ctx.Done():

@@ -56,11 +56,12 @@ func TestBully(t *testing.T) {
 	connectionCount := 10
 	messagesPerConnection := 200
 
-	// Create party
+	// Create party, can't ping as client doesn't implement pong
 	party := sockparty.NewParty("", &sockparty.Options{
-		PingFrequency: time.Minute * 100,
+		PingFrequency: time.Second * 10,
 		PingTimeout:   time.Second * 5,
-		RateLimiter:   rate.NewLimiter(rate.Every(time.Millisecond*1), 100),
+		DoPing:        false,
+		RateLimiter:   rate.NewLimiter(rate.Every(time.Millisecond*1), 1),
 	})
 
 	party.SetMessageEvent("message", func(party *sockparty.Party, message sockparty.IncomingMessage) {

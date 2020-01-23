@@ -10,6 +10,7 @@ import (
 func DefaultOptions() *Options {
 	return &Options{
 		RateLimiter:   rate.NewLimiter(rate.Every(time.Millisecond*100), 5),
+		DoPing:        true,
 		PingFrequency: time.Second * 15,
 		PingTimeout:   time.Second * 10,
 	}
@@ -19,6 +20,9 @@ func DefaultOptions() *Options {
 type Options struct {
 	// Limiter used against incoming client messages.
 	RateLimiter *rate.Limiter
+
+	// Determines whether clients should be pinged.
+	DoPing bool
 
 	// Determines how frequently users are pinged.
 	PingFrequency time.Duration
