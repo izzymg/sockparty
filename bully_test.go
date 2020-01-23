@@ -14,7 +14,7 @@ import (
 	"nhooyr.io/websocket"
 )
 
-func spawn(messageCount int, got chan int) func() {
+func spawnrw(messageCount int, got chan int) func() {
 
 	// Create a connection
 	conn, _, err := websocket.Dial(context.Background(), "ws://localhost:3500", nil)
@@ -93,7 +93,7 @@ func TestBully(t *testing.T) {
 	messagesReceived := 0
 
 	for i := 0; i < connectionCount; i++ {
-		cleanup := spawn(messagesPerConnection, got)
+		cleanup := spawnrw(messagesPerConnection, got)
 		defer cleanup()
 	}
 
@@ -116,17 +116,17 @@ func TestBully(t *testing.T) {
 
 func BenchmarkBully(b *testing.B) {
 
-	connectionCount := 10
-	messagesPerConnection := 200
-
-	// Create party, can't ping as client doesn't implement pong
 	party := sockparty.NewParty("", &sockparty.Options{
 		PingFrequency: 0,
 		RateLimiter:   rate.NewLimiter(rate.Every(time.Millisecond), 1),
 	})
 
+	// Echo back immediately
 	party.SetMessageEvent("message", func(party *sockparty.Party, message sockparty.IncomingMessage) {
-		party.SendMessage <- sockparty.OutgoingMessage{Broadcast: true, Payload: "bcast"}
+		party.SendMessage <- sockparty.OutgoingMessage{
+			UserID:  message.UserID,
+			Payload: message.Payload,
+		}
 	})
 
 	party.UserInvalidMessageHandler = func(message sockparty.IncomingMessage) {
@@ -140,7 +140,7 @@ func BenchmarkBully(b *testing.B) {
 
 	// Create HTTP server
 	server := http.Server{
-		Addr:    "localhost:3500",
+		Addr:    "localhost:3200",
 		Handler: party,
 	}
 	defer server.Shutdown(context.Background())
@@ -151,10 +151,17 @@ func BenchmarkBully(b *testing.B) {
 		}
 	}()
 
-	got := make(chan int)
-	// Create conns
-	for i := 0; i < connectionCount; i++ {
-		cleanup := spawn(messagesPerConnection, got)
-		defer cleanup()
+	// Create a connection
+	conn, _, err := websocket.Dial(context.Background(), "ws://localhost:3200", nil)
+	if err != nil {
+		panic(err)
 	}
+
+	b.StartTimer()
+	err = conn.Write(context.Background(), websocket.MessageText, []byte(`{ "event": "message" }`))
+	if err != nil {
+		panic(err)
+	}
+	conn.Read(context.Background())
+	b.StopTimer()
 }
