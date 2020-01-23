@@ -4,21 +4,12 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"time"
 
-	"golang.org/x/time/rate"
 	"nhooyr.io/websocket"
 )
 
 // NewParty creates a new room for users to join.
 func NewParty(name string, options *Options) *Party {
-	// TODO: cleaner options
-	if options.PingFrequency == 0 {
-		options.PingFrequency = 10 * time.Second
-	}
-	if options.PingTimeout == 0 {
-		options.PingTimeout = 10 * time.Second
-	}
 	return &Party{
 		Name:          name,
 		Options:       options,
@@ -35,19 +26,6 @@ func NewParty(name string, options *Options) *Party {
 		addUser:         make(chan *User),
 		removeUser:      make(chan *User),
 	}
-}
-
-// Options configures a party's settings.
-type Options struct {
-	// The origin header that must be present for users to connect.
-	AllowedOrigin string
-	// Limiter used against incoming client messages.
-	RateLimiter *rate.Limiter
-
-	// Determines how frequently users are pinged.
-	PingFrequency time.Duration
-	// Determines how long to wait on a ping before assuming the connection is dead.
-	PingTimeout time.Duration
 }
 
 // Party represents a group of users connected in a socket session.
