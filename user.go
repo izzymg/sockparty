@@ -1,7 +1,9 @@
 package sockparty
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -25,8 +27,8 @@ func newUser(name string, connection *websocket.Conn, options *Options) (*User, 
 		connection: connection,
 		closed:     make(chan error),
 		// TODO: add buffers here
-		fromUser: make(chan Message),
-		toUser:   make(chan Message),
+		fromUser: make(chan IncomingMessage),
+		toUser:   make(chan OutgoingMessage),
 	}, nil
 }
 
@@ -37,12 +39,12 @@ type User struct {
 	options    *Options
 	connection *websocket.Conn
 	closed     chan error
-	fromUser   chan Message
-	toUser     chan Message
+	fromUser   chan IncomingMessage
+	toUser     chan OutgoingMessage
 }
 
 // Writes message to user
-func (user *User) writeMessage(ctx context.Context, message *Message) error {
+func (user *User) writeMessage(ctx context.Context, message *OutgoingMessage) error {
 	err := wsjson.Write(ctx, user.connection, message)
 	if err != nil {
 		return fmt.Errorf("Write JSON to user failed: %w", err)
@@ -50,14 +52,32 @@ func (user *User) writeMessage(ctx context.Context, message *Message) error {
 	return nil
 }
 
-// Blocks until next message and returns it
-func (user *User) readMessage(ctx context.Context) (*Message, error) {
-	message := &Message{}
-	err := wsjson.Read(ctx, user.connection, &message)
+// Blocks until a message comes through from the connection and reads it.
+func (user *User) readMessage(ctx context.Context) (*IncomingMessage, error) {
+
+	mType, reader, err := user.connection.Reader(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("Read JSON from user failed: %w", err)
 	}
+	if mType != websocket.MessageText {
+		return nil, fmt.Errorf("Read JSON from user failed: expected text message type")
+	}
+
+	// TODO: increase efficiency here
+
+	// Create buffer from connection
+	var buf bytes.Buffer
+	buf.ReadFrom(reader)
+
+	/* Read the messasge into a new structure, and set its source.
+	   A copy of the entire byte slice is passed into the message as well,
+	   so it can be decoded into a more specific structure later */
+
+	message := &IncomingMessage{}
+	json.Unmarshal(buf.Bytes(), message)
 	message.SourceUser = user.ID
+	message.Payload = buf.Bytes()
+
 	return message, nil
 }
 

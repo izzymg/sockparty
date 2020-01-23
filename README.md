@@ -10,6 +10,13 @@ party := sockparty.NewParty("A new room", &sockparty.Options{
 	AllowedOrigin: "http://localhost:80",
 })
 
+party.SetMessageEvent("chat_message", func(party *sockparty.Party, message sockparty.IncomingMessage) {
+	// Handle message
+	party.Broadcast <- sockparty.OutgoingMessage{
+		// ...
+	}
+})
+
 go party.Listen()
 
 // Party implements http.Handler, will upgrade requests to WebSocket

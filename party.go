@@ -19,17 +19,14 @@ func NewParty(name string, options *Options) *Party {
 		options.PingTimeout = 10 * time.Second
 	}
 	return &Party{
-		Name:           name,
-		Options:        options,
-		Stop:           make(chan bool),
-		Broadcast:      make(chan Message),
-		MessageUser:    make(chan Message),
-		connectedUsers: make(map[string]*User),
-		addUser:        make(chan *User),
-		deleteUser:     make(chan *User),
-		handlers: map[string]MessageHandler{
-			ChatMessage: options.ChatMessageHandler,
-		},
+		Name:            name,
+		Options:         options,
+		Stop:            make(chan bool),
+		Broadcast:       make(chan OutgoingMessage),
+		messageHandlers: make(map[MessageEvent]MessageHandler),
+		connectedUsers:  make(map[string]*User),
+		addUser:         make(chan *User),
+		deleteUser:      make(chan *User),
 	}
 }
 
@@ -39,8 +36,6 @@ type Options struct {
 	AllowedOrigin string
 	// Limiter used against incoming client messages.
 	RateLimiter *rate.Limiter
-
-	ChatMessageHandler MessageHandler
 
 	// Determines how frequently users are pinged.
 	PingFrequency time.Duration
@@ -56,17 +51,16 @@ type Party struct {
 	Options *Options
 	// Close or send to this channel to stop the party from running
 	Stop chan bool
-	// Write a message to the user at ID of the message's destination
-	MessageUser chan Message
 	// Broadcast message to all users
-	Broadcast chan Message
+	Broadcast chan OutgoingMessage
 
 	// Connections currently active in this party
 	connectedUsers map[string]*User
 
+	messageHandlers map[MessageEvent]MessageHandler
+
 	addUser    chan *User
 	deleteUser chan *User
-	handlers   map[string]MessageHandler
 }
 
 /*ServeHTTP handles an HTTP request to join the room and upgrade to WebSocket. As this adds users to the party,
@@ -102,6 +96,11 @@ func (party *Party) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	if err != nil {
 		fmt.Println(err)
 	}
+}
+
+// SetMessageEvent sets the handler for messages with some event type to a handler function.
+func (party *Party) SetMessageEvent(event MessageEvent, handler MessageHandler) {
+	party.messageHandlers[event] = handler
 }
 
 // GetConnectedUserCount returns the number of currently connected users.
@@ -141,21 +140,6 @@ func (party *Party) Listen() {
 					fmt.Printf("Party: broadcast to user %s skipped, no receiver\n", user.ID)
 				}
 			}
-
-		case message := <-party.MessageUser:
-			// Message single user using the destination field
-			user, ok := party.connectedUsers[message.DestinationUser]
-			if !ok {
-				fmt.Println("Party: message to non-existent user")
-			}
-			// Don't block if the user isn't available.
-			// TODO: Timeout here.
-			select {
-			case user.toUser <- message:
-				fmt.Printf("Party: messaged user %s\n", user.ID)
-			default:
-				fmt.Printf("Party: user %s not receiving message\n", user.ID)
-			}
 		}
 	}
 }
@@ -173,11 +157,16 @@ func (party *Party) processUser(ctx context.Context, user *User) error {
 	for {
 		select {
 		case err := <-user.closed:
+			// Delete and cleanup a closed user
 			party.deleteUser <- user
 			return fmt.Errorf("Party: process user closed: %w", err)
 		case message := <-user.fromUser:
-			handler := party.handlers[message.Event]
-			fmt.Printf("Party: message %v, handler: %v\n", message, handler)
+			// Pass incoming messages to assigned handler
+			if handler, ok := party.messageHandlers[message.Event]; ok {
+				handler(party, message)
+				continue
+			}
+			fmt.Println("Did not understand message event")
 		}
 	}
 }
