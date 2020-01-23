@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -29,6 +30,23 @@ func main() {
 		RateLimiter:   rate.NewLimiter(rate.Every(time.Millisecond*100), 2),
 	})
 
+	// Add some handlers
+
+	party.UserAddedHandler = func(ID string, name string) {
+		fmt.Println("Log: user joined the party")
+	}
+	party.UserRemovedHandler = func(ID string, name string) {
+		fmt.Println("Log: user removed the party")
+	}
+
+	party.UserInvalidMessageHandler = func(message sockparty.IncomingMessage) {
+		fmt.Println("Log: user sent an invalid message")
+		party.SendMessage <- sockparty.OutgoingMessage{
+			Event:   "error",
+			Payload: &ErrOut{Err: "Invalid message event received"},
+		}
+	}
+
 	/* Set event handlers. When a JSON message is sent with the format of { "event": "your_event" },
 	the handler with the corresponding event name will be triggered */
 	party.SetMessageEvent("chat_message", func(party *sockparty.Party, message sockparty.IncomingMessage) {
@@ -38,22 +56,15 @@ func main() {
 		err := json.Unmarshal(message.Payload, data)
 		if err != nil {
 			party.SendMessage <- sockparty.OutgoingMessage{
-				Broadcast: false,
-				Event:     "error",
-				Payload:   &ErrOut{Err: "Failed to parse chat message JSON"},
+				Event:   "error",
+				Payload: &ErrOut{Err: "Failed to parse chat message JSON"},
 			}
 			return
 		}
 
-		// Some validation logic
-		if len(data.Payload.Message) > 200 || len(data.Payload.Message) < 1 {
-			party.SendMessage <- sockparty.OutgoingMessage{
-				Broadcast: false,
-				Event:     "error",
-				Payload:   &ErrOut{Err: "Message must be between 1-200 characters"},
-			}
-			return
-		}
+		// Some validation logic...
+
+		// Broadcast it back to the users, making sure the payload struct only contains the data.
 		party.SendMessage <- sockparty.OutgoingMessage{
 			Broadcast: true,
 			Event:     "chat_message",
@@ -65,7 +76,7 @@ func main() {
 	// Listen blocks.
 	go party.Listen()
 	defer func() {
-		party.Stop <- true
+		party.StopListening <- true
 	}()
 
 	server := http.Server{
