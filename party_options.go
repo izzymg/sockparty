@@ -17,8 +17,6 @@ func DefaultOptions() *Options {
 
 // Options configures a party's settings.
 type Options struct {
-	// The origin header that must be present for users to connect.
-	AllowedOrigin string
 	// Limiter used against incoming client messages.
 	RateLimiter *rate.Limiter
 

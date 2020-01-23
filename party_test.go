@@ -72,10 +72,7 @@ func makeServer(handler http.Handler, address string) chan<- bool {
 func TestMany(t *testing.T) {
 	var clients []*websocket.Conn
 
-	party := sockparty.NewParty("many", &sockparty.Options{
-		AllowedOrigin: "http://localhost:80",
-		RateLimiter:   rate.NewLimiter(rate.Every(time.Millisecond*100), 3),
-	})
+	party := sockparty.NewParty("many", sockparty.DefaultOptions())
 	go party.Listen()
 
 	stop := makeServer(party, "localhost:3500")
@@ -116,9 +113,7 @@ func TestMany(t *testing.T) {
 }
 
 func TestContexts(t *testing.T) {
-	party := sockparty.NewParty("Room room", &sockparty.Options{
-		AllowedOrigin: "http://localhost:80",
-	})
+	party := sockparty.NewParty("Room room", sockparty.DefaultOptions())
 
 	go party.Listen()
 
@@ -166,9 +161,11 @@ func TestContexts(t *testing.T) {
 
 func TestUpDown(t *testing.T) {
 
+	opts := sockparty.DefaultOptions()
+	opts.RateLimiter = rate.NewLimiter(rate.Every(time.Millisecond*100), 5)
 	party := sockparty.NewParty("Sick room dudes", &sockparty.Options{
-		RateLimiter:   rate.NewLimiter(rate.Every(time.Millisecond*100), 5),
-		AllowedOrigin: "http://localhost:80",
+
+		PingFrequency: time.Second * 10,
 	})
 	go party.Listen()
 

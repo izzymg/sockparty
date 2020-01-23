@@ -7,7 +7,6 @@ Sockparty is a test implementation of a websocket chat-room with Golang and [nho
 ```go
 party := sockparty.NewParty("A new room", &sockparty.Options{
 	RateLimiter:   rate.NewLimiter(rate.Every(time.Millisecond*100), 5),
-	AllowedOrigin: "http://localhost:80",
 })
 
 party.SetMessageEvent("chat_message", func(party *sockparty.Party, message sockparty.IncomingMessage) {

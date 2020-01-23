@@ -26,8 +26,7 @@ func main() {
 
 	// Setup a new party with a rate limiter and allowed client origin
 	party := sockparty.NewParty("Party", &sockparty.Options{
-		AllowedOrigin: "http://localhost:80",
-		RateLimiter:   rate.NewLimiter(rate.Every(time.Millisecond*100), 2),
+		RateLimiter: rate.NewLimiter(rate.Every(time.Millisecond*100), 2),
 	})
 
 	// Add some handlers
