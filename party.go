@@ -58,7 +58,7 @@ it will block indefinitely if the party is not currently listening. */
 func (party *Party) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 
 	// Upgrade the HTTP request to a socket connection
-	conn, err := websocket.Accept(rw, req, &websocket.AcceptOptions{})
+	conn, err := websocket.Accept(rw, req, nil)
 	if err != nil {
 		party.ErrorHandler(fmt.Errorf("Failed to upgrade websocket connection: %v", err))
 		return
