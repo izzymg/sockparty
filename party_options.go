@@ -9,14 +9,19 @@ import (
 // DefaultOptions generates party options with defaults. Use if you're just testing.
 func DefaultOptions() *Options {
 	return &Options{
-		RateLimiter:   rate.NewLimiter(rate.Every(time.Millisecond*100), 5),
-		PingFrequency: time.Second * 15,
-		PingTimeout:   time.Second * 10,
+		AllowCrossOrigin: true,
+		RateLimiter:      rate.NewLimiter(rate.Every(time.Millisecond*100), 5),
+		PingFrequency:    time.Second * 15,
+		PingTimeout:      time.Second * 10,
 	}
 }
 
 // Options configures a party's settings.
 type Options struct {
+
+	// Allow cross origin socket requests
+	AllowCrossOrigin bool
+
 	// Limiter used against incoming client messages.
 	RateLimiter *rate.Limiter
 
