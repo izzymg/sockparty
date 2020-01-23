@@ -2,7 +2,6 @@ package sockparty_test
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"net/http"
 	"testing"
@@ -93,8 +92,6 @@ func TestBully(t *testing.T) {
 		}
 	}()
 
-	<-time.After(time.Second * 2)
-
 	// Setup connection vars
 	var closeFunctions []func()
 	got := make(chan int, connectionCount)
@@ -122,7 +119,6 @@ func TestBully(t *testing.T) {
 		select {
 		case <-got:
 			messagesReceived++
-			fmt.Println(messagesReceived)
 			if messagesReceived == connectionCount*messagesPerConnection {
 				going = false
 			}
