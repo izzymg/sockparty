@@ -75,7 +75,7 @@ func (user *User) readMessage(ctx context.Context) (*IncomingMessage, error) {
 
 	message := &IncomingMessage{}
 	json.Unmarshal(buf.Bytes(), message)
-	message.SourceUser = user.ID
+	message.UserID = user.ID
 	message.Payload = buf.Bytes()
 
 	return message, nil

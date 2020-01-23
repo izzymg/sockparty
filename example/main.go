@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"time"
 
@@ -13,6 +12,16 @@ import (
 /* Chat room example with SockParty */
 
 func main() {
+
+	type ChatMessage struct {
+		Payload struct {
+			Message string `json:"message"`
+		}
+	}
+
+	type ErrOut struct {
+		Err string `json:"err"`
+	}
 
 	// Setup a new party with a rate limiter and allowed client origin
 	party := sockparty.NewParty("Party", &sockparty.Options{
@@ -25,25 +34,30 @@ func main() {
 	party.SetMessageEvent("chat_message", func(party *sockparty.Party, message sockparty.IncomingMessage) {
 
 		// Decode the payload byte slice into the expected data format
-
-		data := &struct {
-			Payload struct {
-				Message string `json:"message"`
-			}
-		}{}
-
+		data := &ChatMessage{}
 		err := json.Unmarshal(message.Payload, data)
 		if err != nil {
-			fmt.Println(err)
-		}
-
-		if len(data.Payload.Message) > 200 || len(data.Payload.Message) < 1 {
-			// Some validation logic
+			party.SendMessage <- sockparty.OutgoingMessage{
+				Broadcast: false,
+				Event:     "error",
+				Payload:   &ErrOut{Err: "Failed to parse chat message JSON"},
+			}
 			return
 		}
-		party.Broadcast <- sockparty.OutgoingMessage{
-			Event:   "chat_message",
-			Payload: data,
+
+		// Some validation logic
+		if len(data.Payload.Message) > 200 || len(data.Payload.Message) < 1 {
+			party.SendMessage <- sockparty.OutgoingMessage{
+				Broadcast: false,
+				Event:     "error",
+				Payload:   &ErrOut{Err: "Message must be between 1-200 characters"},
+			}
+			return
+		}
+		party.SendMessage <- sockparty.OutgoingMessage{
+			Broadcast: true,
+			Event:     "chat_message",
+			Payload:   data.Payload,
 		}
 	})
 

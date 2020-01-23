@@ -22,7 +22,7 @@ func NewParty(name string, options *Options) *Party {
 		Name:            name,
 		Options:         options,
 		Stop:            make(chan bool),
-		Broadcast:       make(chan OutgoingMessage),
+		SendMessage:     make(chan OutgoingMessage),
 		messageHandlers: make(map[MessageEvent]MessageHandler),
 		connectedUsers:  make(map[string]*User),
 		addUser:         make(chan *User),
@@ -51,8 +51,8 @@ type Party struct {
 	Options *Options
 	// Close or send to this channel to stop the party from running
 	Stop chan bool
-	// Broadcast message to all users
-	Broadcast chan OutgoingMessage
+	// Send an outgoing message to users
+	SendMessage chan OutgoingMessage
 
 	// Connections currently active in this party
 	connectedUsers map[string]*User
@@ -118,6 +118,24 @@ func (party *Party) Listen() {
 			fmt.Println("Party stopped")
 			return
 
+		case message := <-party.SendMessage:
+			if message.Broadcast {
+				for _, user := range party.connectedUsers {
+					select {
+					// Don't block if the user isn't available.
+					// TODO: Timeout here.
+					case user.toUser <- message:
+						fmt.Println("Party: broadcast successful")
+					default:
+						fmt.Printf("Party: broadcast to user %s skipped, no receiver\n", user.ID)
+					}
+				}
+			} else {
+				if user, ok := party.connectedUsers[message.UserID]; ok {
+					user.toUser <- message
+				}
+			}
+
 		case user := <-party.addUser:
 			// Add user to map
 			party.connectedUsers[user.ID] = user
@@ -127,19 +145,6 @@ func (party *Party) Listen() {
 			// Remove user from map
 			delete(party.connectedUsers, user.ID)
 			fmt.Printf("Party: removed user %s\n", user.ID)
-
-		case message := <-party.Broadcast:
-			// Broadcast message to all users in map
-			for _, user := range party.connectedUsers {
-				select {
-				// Don't block if the user isn't available.
-				// TODO: Timeout here.
-				case user.toUser <- message:
-					fmt.Println("Party: broadcast successful")
-				default:
-					fmt.Printf("Party: broadcast to user %s skipped, no receiver\n", user.ID)
-				}
-			}
 		}
 	}
 }

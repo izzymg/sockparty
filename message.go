@@ -11,15 +11,19 @@ const (
 	ChatMessageEvent = "chat_message"
 )
 
-// IncomingMessage contains information about a message, including its type, the destination and the source.
+// IncomingMessage represents a socket message from a user, destined to the server.
 type IncomingMessage struct {
-	Event      MessageEvent `json:"event"`
-	SourceUser string
-	Payload    []byte `json:"payload"`
+	Event   MessageEvent `json:"event"`
+	UserID  string       `json:"-"`
+	Payload []byte       `json:"payload"`
 }
 
-// OutgoingMessage contains information about a message, including its type, the destination and the source.
+/*OutgoingMessage represents a message destined from the server to users.
+Broadcast can be set to true to indicate the message is for all users,
+otherwise the message can be sent to a specific user ID. */
 type OutgoingMessage struct {
-	Event   MessageEvent `json:"event"`
-	Payload interface{}  `json:"payload"`
+	Broadcast bool
+	UserID    string       `json:"-"`
+	Event     MessageEvent `json:"event"`
+	Payload   interface{}  `json:"payload"`
 }
