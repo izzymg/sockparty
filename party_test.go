@@ -81,7 +81,7 @@ func TestMany(t *testing.T) {
 	stop := makeServer(party, "localhost:3500")
 	defer func() {
 		stop <- true
-		party.Stop <- true
+		party.StopListening <- true
 	}()
 
 	for i := 0; i < 10; i++ {
@@ -157,7 +157,7 @@ func TestContexts(t *testing.T) {
 		case <-time.After(time.Second * 2):
 			cancel()
 			<-time.After(time.Second * 2)
-			party.Stop <- true
+			party.StopListening <- true
 			server.Shutdown(context.TODO())
 			return
 		}

@@ -25,7 +25,7 @@ router.Get("/newRoom", party)
 
 fmt.Println(party.GetConnectedUserCount())
 
-party.Stop <- true
+party.StopListening <- true
 ```
 
 ### TODO:
