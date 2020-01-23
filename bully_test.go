@@ -2,6 +2,7 @@ package sockparty_test
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"testing"
@@ -57,21 +58,16 @@ func TestBully(t *testing.T) {
 
 	// Create party, can't ping as client doesn't implement pong
 	party := sockparty.NewParty("", &sockparty.Options{
-		PingFrequency: time.Second * 10,
-		PingTimeout:   time.Second * 5,
-		DoPing:        false,
-		RateLimiter:   rate.NewLimiter(rate.Every(time.Millisecond*1), 1),
+		PingFrequency: 0,
+		RateLimiter:   rate.NewLimiter(rate.Every(time.Millisecond*10), 10),
 	})
 
 	party.SetMessageEvent("message", func(party *sockparty.Party, message sockparty.IncomingMessage) {
-		party.SendMessage <- sockparty.OutgoingMessage{
-			UserID:  message.UserID,
-			Payload: "back at you",
-		}
+		party.SendMessage <- sockparty.OutgoingMessage{UserID: message.UserID, Payload: "echo"}
 	})
 
 	party.UserInvalidMessageHandler = func(message sockparty.IncomingMessage) {
-		panic(message)
+		panic(fmt.Errorf("Test: Invalid message"))
 	}
 
 	go party.Listen()
@@ -93,24 +89,12 @@ func TestBully(t *testing.T) {
 	}()
 
 	// Setup connection vars
-	var closeFunctions []func()
 	got := make(chan int, connectionCount)
 	messagesReceived := 0
 
 	for i := 0; i < connectionCount; i++ {
-		closeFunc := spawn(messagesPerConnection, got)
-		closeFunctions = append(closeFunctions, closeFunc)
-	}
-
-	defer func() {
-		// Cleanup
-		for _, close := range closeFunctions {
-			close()
-		}
-	}()
-
-	if len(closeFunctions) != connectionCount {
-		t.Fatal("Expected as many close functions as connections spawned")
+		cleanup := spawn(messagesPerConnection, got)
+		defer cleanup()
 	}
 
 	// Start incrementing connections received
@@ -127,5 +111,50 @@ func TestBully(t *testing.T) {
 	// Assert that got as many messages as connections were echoed back
 	if messagesReceived != connectionCount*messagesPerConnection {
 		log.Fatalf("Expected to recieve %d messages but got %d", connectionCount*messagesPerConnection, messagesReceived)
+	}
+}
+
+func BenchmarkBully(b *testing.B) {
+
+	connectionCount := 10
+	messagesPerConnection := 200
+
+	// Create party, can't ping as client doesn't implement pong
+	party := sockparty.NewParty("", &sockparty.Options{
+		PingFrequency: 0,
+		RateLimiter:   rate.NewLimiter(rate.Every(time.Millisecond), 1),
+	})
+
+	party.SetMessageEvent("message", func(party *sockparty.Party, message sockparty.IncomingMessage) {
+		party.SendMessage <- sockparty.OutgoingMessage{Broadcast: true, Payload: "bcast"}
+	})
+
+	party.UserInvalidMessageHandler = func(message sockparty.IncomingMessage) {
+		panic(fmt.Errorf("Test: Invalid message"))
+	}
+
+	go party.Listen()
+	defer func() {
+		party.StopListening <- true
+	}()
+
+	// Create HTTP server
+	server := http.Server{
+		Addr:    "localhost:3500",
+		Handler: party,
+	}
+	defer server.Shutdown(context.Background())
+
+	go func() {
+		if err := server.ListenAndServe(); err != http.ErrServerClosed {
+			panic(err)
+		}
+	}()
+
+	got := make(chan int)
+	// Create conns
+	for i := 0; i < connectionCount; i++ {
+		cleanup := spawn(messagesPerConnection, got)
+		defer cleanup()
 	}
 }
