@@ -36,7 +36,7 @@ func main() {
 		fmt.Println("Log: user joined the party")
 	}
 	party.UserRemovedHandler = func(ID string, name string) {
-		fmt.Println("Log: user removed the party")
+		fmt.Println("Log: user removed from party")
 	}
 
 	party.UserInvalidMessageHandler = func(message sockparty.IncomingMessage) {
