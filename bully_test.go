@@ -76,12 +76,16 @@ func TestBully(t *testing.T) {
 	}
 
 	go party.Listen()
+	defer func() {
+		party.StopListening <- true
+	}()
 
 	// Create HTTP server
 	server := http.Server{
 		Addr:    "localhost:3500",
 		Handler: party,
 	}
+	defer server.Shutdown(context.Background())
 
 	go func() {
 		if err := server.ListenAndServe(); err != http.ErrServerClosed {
@@ -101,6 +105,13 @@ func TestBully(t *testing.T) {
 		closeFunctions = append(closeFunctions, closeFunc)
 	}
 
+	defer func() {
+		// Cleanup
+		for _, close := range closeFunctions {
+			close()
+		}
+	}()
+
 	if len(closeFunctions) != connectionCount {
 		t.Fatal("Expected as many close functions as connections spawned")
 	}
@@ -117,13 +128,6 @@ func TestBully(t *testing.T) {
 			}
 		}
 	}
-
-	// Cleanup
-	for _, close := range closeFunctions {
-		close()
-	}
-	server.Shutdown(context.Background())
-
 	// Assert that got as many messages as connections were echoed back
 	if messagesReceived != connectionCount*messagesPerConnection {
 		log.Fatalf("Expected to recieve %d messages but got %d", connectionCount*messagesPerConnection, messagesReceived)
