@@ -4,10 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"time"
 
 	"github.com/izzymg/sockparty"
-	"golang.org/x/time/rate"
 )
 
 /* Chat room example with SockParty */
@@ -25,10 +23,7 @@ func main() {
 	}
 
 	// Setup a new party with a rate limiter and allowed client origin
-	party := sockparty.NewParty("Party", &sockparty.Options{
-		RateLimiter: rate.NewLimiter(rate.Every(time.Millisecond*100), 2),
-	})
-
+	party := sockparty.NewParty("Party", sockparty.DefaultOptions())
 	// Add some handlers
 
 	party.UserAddedHandler = func(ID string, name string) {
@@ -43,6 +38,7 @@ func main() {
 		party.SendMessage <- sockparty.OutgoingMessage{
 			Event:   "error",
 			Payload: &ErrOut{Err: "Invalid message event received"},
+			UserID:  message.UserID,
 		}
 	}
 

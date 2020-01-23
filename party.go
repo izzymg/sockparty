@@ -109,20 +109,9 @@ func (party *Party) Listen() {
 
 		case message := <-party.SendMessage:
 			if message.Broadcast {
-				for _, user := range party.connectedUsers {
-					select {
-					// Don't block if the user isn't available.
-					// TODO: Timeout here.
-					case user.toUser <- message:
-						break
-					default:
-						break
-					}
-				}
+				party.broadcast(message)
 			} else {
-				if user, ok := party.connectedUsers[message.UserID]; ok {
-					user.toUser <- message
-				}
+				party.messageUser(message)
 			}
 
 		case user := <-party.addUser:
@@ -136,6 +125,31 @@ func (party *Party) Listen() {
 			party.UserRemovedHandler(user.ID, user.Name)
 		}
 	}
+}
+
+// Push to all users
+func (party *Party) broadcast(message OutgoingMessage) {
+	for _, user := range party.connectedUsers {
+		message.UserID = user.ID
+		party.messageUser(message)
+	}
+}
+
+// Push to one user
+func (party *Party) messageUser(message OutgoingMessage) error {
+	if user, ok := party.connectedUsers[message.UserID]; ok {
+		// Don't block if the user isn't available.
+		// TODO: Timeout here.
+		select {
+		case user.toUser <- message:
+			break
+		default:
+			return fmt.Errorf("User blocked %s", user.ID)
+		}
+	} else {
+		return fmt.Errorf("No such user %s", message.UserID)
+	}
+	return nil
 }
 
 /* Process user begins processing the user's requests.

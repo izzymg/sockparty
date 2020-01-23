@@ -28,6 +28,7 @@ party.StopListening <- true
 ```
 
 ### TODO:
+* Rewrite tests
 * Add ready/received message
 * Better API control over channel buffer size
 * Add authentication function to parties
