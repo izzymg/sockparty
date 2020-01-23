@@ -12,7 +12,8 @@ party := sockparty.NewParty("A new room", &sockparty.Options{
 
 party.SetMessageEvent("chat_message", func(party *sockparty.Party, message sockparty.IncomingMessage) {
 	// Handle message
-	party.Broadcast <- sockparty.OutgoingMessage{
+	party.SendMessage <- sockparty.OutgoingMessage{
+		Broadcast: true,
 		// ...
 	}
 })
