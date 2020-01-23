@@ -6,11 +6,6 @@ type MessageEvent string
 // MessageHandler is a function type for callbacks receiving party messages.
 type MessageHandler func(party *Party, message IncomingMessage)
 
-// Event types
-const (
-	ChatMessageEvent = "chat_message"
-)
-
 // IncomingMessage represents a socket message from a user, destined to the server.
 type IncomingMessage struct {
 	Event   MessageEvent `json:"event"`
