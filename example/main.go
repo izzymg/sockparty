@@ -4,16 +4,18 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	_ "net/http/pprof"
 
 	"github.com/izzymg/sockparty"
-	"github.com/pkg/profile"
 )
 
 /* Chat room example with SockParty */
 
 func main() {
 
-	defer profile.Start(profile.MemProfile, profile.ProfilePath(".")).Stop()
+	go func() {
+		fmt.Println(http.ListenAndServe("localhost:6060", nil))
+	}()
 
 	type ChatMessage struct {
 		Payload struct {
