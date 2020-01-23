@@ -6,11 +6,14 @@ import (
 	"net/http"
 
 	"github.com/izzymg/sockparty"
+	"github.com/pkg/profile"
 )
 
 /* Chat room example with SockParty */
 
 func main() {
+
+	defer profile.Start(profile.MemProfile, profile.ProfilePath(".")).Stop()
 
 	type ChatMessage struct {
 		Payload struct {

@@ -4,3 +4,4 @@ debug*
 *.exe
 prof
 .vscode
+*pprof
