@@ -88,7 +88,7 @@ func (party *Party) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 
 	// Generate a new user structure
 	user, err := newUser(
-		fmt.Sprintf("User"),
+		"User",
 		conn,
 		party.Options,
 	)

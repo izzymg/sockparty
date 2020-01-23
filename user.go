@@ -83,7 +83,6 @@ func (user *User) readMessage(ctx context.Context) (*IncomingMessage, error) {
 
 // Blocks until user responds
 func (user *User) ping(ctx context.Context) error {
-	fmt.Printf("User: Pinging user %s\n", user.ID)
 	return user.connection.Ping(ctx)
 }
 
@@ -95,7 +94,6 @@ func (user *User) listenOutgoing(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			// Context dropped (Upgraded request may have been killed)
-			fmt.Println("User: listen outgoing context finished")
 			return
 		case <-ticker.C:
 			// Ping the user and wait for a pong back. Assume dead if no response.
@@ -132,19 +130,16 @@ func (user *User) listenIncoming(ctx context.Context) {
 		select {
 		// Make sure the context isn't dead
 		case <-ctx.Done():
-			fmt.Println("User: listen incoming context finished")
 			return
 		default:
 			// Wait for the limiter
 			err := limiter.Wait(ctx)
 			if err != nil {
-				fmt.Println(fmt.Errorf("User rate limit error: %w", err))
 				continue
 			}
 			// Read any JSON
 			message, err := user.readMessage(ctx)
 			if err != nil {
-				fmt.Printf("User: listen incoming closed: %v\n", err)
 				// Indicate the user is dead with an error
 				// TODO: check what kind of error and handle appropriately
 				user.connection.Close(websocket.StatusInternalError, "Read failure")
