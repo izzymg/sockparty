@@ -18,9 +18,7 @@ func main() {
 	}()
 
 	type ChatMessage struct {
-		Payload struct {
-			Message string `json:"message"`
-		}
+		Body string `json:"body"`
 	}
 
 	type ErrOut struct {
@@ -50,25 +48,19 @@ func main() {
 	/* Set event handlers. When a JSON message is sent with the format of { "event": "your_event" },
 	the handler with the corresponding event name will be triggered */
 	party.SetMessageEvent("chat_message", func(party *sockparty.Party, message sockparty.IncomingMessage) {
+		cm := &ChatMessage{}
 
-		// Decode the payload byte slice into the expected data format
-		data := &ChatMessage{}
-		err := json.Unmarshal(message.Payload, data)
+		// Unmarshal payload into expected data format
+		err := json.Unmarshal(message.Payload, cm)
 		if err != nil {
-			party.SendMessage <- sockparty.OutgoingMessage{
-				Event:   "error",
-				Payload: &ErrOut{Err: "Failed to parse chat message JSON"},
-			}
+			fmt.Println(err)
 			return
 		}
 
-		// Some validation logic...
-
-		// Broadcast it back to the users, making sure the payload struct only contains the data.
 		party.SendMessage <- sockparty.OutgoingMessage{
-			Broadcast: true,
 			Event:     "chat_message",
-			Payload:   data.Payload,
+			Broadcast: true,
+			Payload:   cm,
 		}
 	})
 

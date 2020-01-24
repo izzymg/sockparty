@@ -1,5 +1,7 @@
 package sockparty
 
+import "encoding/json"
+
 // MessageEvent is a string representing a message's event type.
 type MessageEvent string
 
@@ -8,9 +10,9 @@ type MessageHandler func(party *Party, message IncomingMessage)
 
 // IncomingMessage represents a socket message from a user, destined to the server.
 type IncomingMessage struct {
-	Event   MessageEvent `json:"event"`
-	UserID  string       `json:"-"`
-	Payload []byte       `json:"payload"`
+	Event   MessageEvent    `json:"event"`
+	UserID  string          `json:"-"`
+	Payload json.RawMessage `json:"payload"`
 }
 
 /*OutgoingMessage represents a message destined from the server to users.

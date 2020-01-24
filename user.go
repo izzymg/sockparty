@@ -1,7 +1,6 @@
 package sockparty
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -55,30 +54,18 @@ func (user *User) writeMessage(ctx context.Context, message *OutgoingMessage) er
 // Blocks until a message comes through from the connection and reads it.
 func (user *User) readMessage(ctx context.Context) (*IncomingMessage, error) {
 
-	mType, reader, err := user.connection.Reader(ctx)
+	var payload json.RawMessage
+	im := &IncomingMessage{
+		UserID:  user.ID,
+		Payload: payload,
+	}
+
+	err := wsjson.Read(ctx, user.connection, im)
 	if err != nil {
 		return nil, fmt.Errorf("Read JSON from user failed: %w", err)
 	}
-	if mType != websocket.MessageText {
-		return nil, fmt.Errorf("Read JSON from user failed: expected text message type")
-	}
 
-	// TODO: increase efficiency here
-
-	// Create buffer from connection
-	var buf bytes.Buffer
-	buf.ReadFrom(reader)
-
-	/* Read the messasge into a new structure, and set its source.
-	   A copy of the entire byte slice is passed into the message as well,
-	   so it can be decoded into a more specific structure later */
-
-	message := &IncomingMessage{}
-	json.Unmarshal(buf.Bytes(), message)
-	message.UserID = user.ID
-	message.Payload = buf.Bytes()
-
-	return message, nil
+	return im, nil
 }
 
 // Blocks until user responds

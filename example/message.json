@@ -1,1 +1,1 @@
-{ "event": "chat_message", "payload": { "message": "My message to the chat" } }
+{ "event": "chat_message", "payload": { "body": "My message to the chat" } }
