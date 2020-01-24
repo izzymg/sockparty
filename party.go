@@ -16,9 +16,9 @@ func NewParty(name string, options *Options) *Party {
 		StopListening: make(chan bool),
 		SendMessage:   make(chan OutgoingMessage),
 
-		UserAddedHandler:          func(id string, n string) {},
-		UserRemovedHandler:        func(id string, n string) {},
-		UserInvalidMessageHandler: func(i IncomingMessage) {},
+		UserAddedHandler:          func(p *Party, u *User) {},
+		UserRemovedHandler:        func(p *Party, u *User) {},
+		UserInvalidMessageHandler: func(p *Party, u *User, m IncomingMessage) {},
 		ErrorHandler:              func(e error) {},
 
 		messageHandlers: make(map[MessageEvent]MessageHandler),
@@ -40,9 +40,9 @@ type Party struct {
 	SendMessage chan OutgoingMessage
 
 	ErrorHandler              func(err error)
-	UserAddedHandler          func(ID string, name string)
-	UserRemovedHandler        func(ID string, name string)
-	UserInvalidMessageHandler func(message IncomingMessage)
+	UserAddedHandler          func(party *Party, user *User)
+	UserRemovedHandler        func(party *Party, user *User)
+	UserInvalidMessageHandler func(party *Party, user *User, message IncomingMessage)
 
 	// Connections currently active in this party
 	connectedUsers map[string]*User
@@ -119,12 +119,12 @@ func (party *Party) Listen() {
 		case user := <-party.addUser:
 			// Add user to map
 			party.connectedUsers[user.ID] = user
-			party.UserAddedHandler(user.ID, user.Name)
+			party.UserAddedHandler(party, user)
 
 		case user := <-party.removeUser:
 			// Remove user from map
 			delete(party.connectedUsers, user.ID)
-			party.UserRemovedHandler(user.ID, user.Name)
+			party.UserRemovedHandler(party, user)
 		}
 	}
 }
@@ -176,7 +176,7 @@ func (party *Party) processUser(ctx context.Context, user *User) error {
 				handler(party, message)
 				continue
 			}
-			party.UserInvalidMessageHandler(message)
+			party.UserInvalidMessageHandler(party, user, message)
 		}
 	}
 }

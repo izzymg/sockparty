@@ -29,19 +29,19 @@ func main() {
 	party := sockparty.NewParty("Party", sockparty.DefaultOptions())
 	// Add some handlers
 
-	party.UserAddedHandler = func(ID string, name string) {
-		fmt.Println("Log: user joined the party")
+	party.UserAddedHandler = func(party *sockparty.Party, user *sockparty.User) {
+		fmt.Printf("Log: user %s joined party %s\n", user.ID, party.Name)
 	}
-	party.UserRemovedHandler = func(ID string, name string) {
-		fmt.Println("Log: user removed from party")
+	party.UserRemovedHandler = func(party *sockparty.Party, user *sockparty.User) {
+		fmt.Printf("Log: user %s left party %s\n", user.ID, party.Name)
 	}
 
-	party.UserInvalidMessageHandler = func(message sockparty.IncomingMessage) {
-		fmt.Println("Log: user sent an invalid message")
+	party.UserInvalidMessageHandler = func(party *sockparty.Party, user *sockparty.User, message sockparty.IncomingMessage) {
+		fmt.Printf("Log: user %s sent an invalid message to party %s\n", user.ID, party.Name)
 		party.SendMessage <- sockparty.OutgoingMessage{
 			Event:   "error",
 			Payload: &ErrOut{Err: "Invalid message event received"},
-			UserID:  message.UserID,
+			UserID:  user.ID,
 		}
 	}
 
