@@ -31,6 +31,13 @@ func main() {
 
 	party.UserAddedHandler = func(party *sockparty.Party, user *sockparty.User) {
 		fmt.Printf("Log: user %s joined party %s\n", user.ID, party.Name)
+		party.SendMessage <- sockparty.OutgoingMessage{
+			Broadcast: true,
+			Payload: ChatMessage{
+				Body: "Hello!!!",
+			},
+		}
+
 	}
 	party.UserRemovedHandler = func(party *sockparty.Party, user *sockparty.User) {
 		fmt.Printf("Log: user %s left party %s\n", user.ID, party.Name)
@@ -40,7 +47,7 @@ func main() {
 		fmt.Printf("Log: user %s sent an invalid message to party %s\n", user.ID, party.Name)
 		party.SendMessage <- sockparty.OutgoingMessage{
 			Event:   "error",
-			Payload: &ErrOut{Err: "Invalid message event received"},
+			Payload: ErrOut{Err: "Invalid message event received"},
 			UserID:  user.ID,
 		}
 	}

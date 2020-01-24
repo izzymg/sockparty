@@ -119,12 +119,12 @@ func (party *Party) Listen() {
 		case user := <-party.addUser:
 			// Add user to map
 			party.connectedUsers[user.ID] = user
-			party.UserAddedHandler(party, user)
+			go party.UserAddedHandler(party, user)
 
 		case user := <-party.removeUser:
 			// Remove user from map
 			delete(party.connectedUsers, user.ID)
-			party.UserRemovedHandler(party, user)
+			go party.UserRemovedHandler(party, user)
 		}
 	}
 }
