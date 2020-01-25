@@ -1,8 +1,14 @@
-# Sockparty
+# SockParty
 
-Sockparty is a test implementation of a websocket chat-room with Golang and [nhooyr/websocket](https://github.com/nhooyr/websocket)
+SockParty is a WebSocket chat room manager for Golang.
 
-### Example
+##### `go get github.com/izzymg/sockparty`
+
+## Built With
+
+* [nhooyr/websocket](https://github.com/nhooyr/websocket)
+
+## Example
 
 ```go
 party := sockparty.NewParty("A new room", &sockparty.Options{
@@ -26,6 +32,11 @@ fmt.Println(party.GetConnectedUserCount())
 
 party.StopListening <- true
 ```
+
+## Contributing
+
+Submit a PR~
+
 
 ### TODO:
 * Rewrite tests
