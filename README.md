@@ -1,6 +1,6 @@
 # SockParty
 
-SockParty is a WebSocket chat room manager for Golang.
+SockParty is a WebSocket room manager for Golang.
 
 ##### `go get github.com/izzymg/sockparty`
 
@@ -9,6 +9,10 @@ SockParty is a WebSocket chat room manager for Golang.
 * [nhooyr/websocket](https://github.com/nhooyr/websocket)
 
 ## Example
+
+#### [Full chat room example package](/example)
+
+#### Summary
 
 ```go
 
