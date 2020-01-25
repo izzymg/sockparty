@@ -2,6 +2,8 @@
 
 SockParty is a WebSocket room manager for Golang. Allows creation of rooms, which manage WebSocket connections and an API to communicate with them.
 
+It is currently in development, and may undergo breaking API changes.
+
 ##### `go get github.com/izzymg/sockparty`
 
 ## Built With
