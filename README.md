@@ -11,24 +11,34 @@ SockParty is a WebSocket chat room manager for Golang.
 ## Example
 
 ```go
+
+// Generate a new party
 party := sockparty.NewParty("A new room", &sockparty.Options{
-	RateLimiter:   rate.NewLimiter(rate.Every(time.Millisecond*100), 5),
+	PingTimeout:	time.Second * 10,
+        PingFrequency: 	time.Second * 20,
+	RateLimiter:   	rate.NewLimiter(rate.Every(time.Millisecond*100), 5),
 })
 
+// Register your own message events and handle them as you wish.
 party.SetMessageEvent("chat_message", func(party *sockparty.Party, message sockparty.IncomingMessage) {
-	// Handle message
+        json.Unmarshal(message.Payload, ...)
+	
+	// Channel based API
 	party.SendMessage <- sockparty.OutgoingMessage{
 		Broadcast: true,
 		// ...
 	}
 })
 
+// Respond to users joining, leaving, etc
+party.UserAddedHandler(...)
+
+// Start the party
 go party.Listen()
 
 // Party implements http.Handler, will upgrade requests to WebSocket
-router.Get("/newRoom", party)
+server.Get("/join", party)
 
-fmt.Println(party.GetConnectedUserCount())
 
 party.StopListening <- true
 ```
