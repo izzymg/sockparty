@@ -2,7 +2,6 @@ package sockparty_test
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -67,7 +66,7 @@ func TestBully(t *testing.T) {
 		party.SendMessage <- sockparty.OutgoingMessage{UserID: message.UserID, Payload: "echo"}
 	})
 
-	party.UserInvalidMessageHandler = func(message sockparty.IncomingMessage) {
+	party.UserInvalidMessageHandler = func(party *sockparty.Party, user *sockparty.User, message sockparty.IncomingMessage) {
 		panic(fmt.Errorf("Test: Invalid message"))
 	}
 
