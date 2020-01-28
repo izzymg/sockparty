@@ -82,22 +82,48 @@ func TestAddUser(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		// Proper WS request
 		t.Run("OK", func(t *testing.T) {
+
+			// User added handler should be invoked after dial.
 			count := 0
 			ctx, cancel := context.WithCancel(context.Background())
 			party.UserAddedHandler = func(userID string) {
-				// User added handler should be called
 				count++
 				cancel()
 			}
-			_, _, err := websocket.Dial(ctx, fmt.Sprintf("ws://%s", getAddr()), nil)
+
+			// Perform dial, want successful connection
+			conn, _, err := websocket.Dial(ctx, fmt.Sprintf("ws://%s", getAddr()), nil)
 			if err != nil {
 				t.Fatal(err)
 			}
-			<-ctx.Done()
 
+			// Wait for user added handler to finish, should be 1 user
+			<-ctx.Done()
 			if count != 1 {
-				t.Fatalf("Expected %d connect, got %d", 1, count)
+				t.Fatalf("Expected %d connected, got %d", 1, count)
+			}
+
+			// User removed should be invoked after close.
+			ctx, cancel = context.WithCancel(context.Background())
+			party.UserRemovedHandler = func(userID string) {
+				cancel()
+			}
+			// Perform close, want success
+			err = conn.Close(websocket.StatusNormalClosure, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			// Wait for user removed handler to finish, should be zero users.
+			<-ctx.Done()
+			c := party.GetConnectedUserCount()
+			if c != 0 {
+				t.Fatalf("Expected %d connected, got %d", 0, c)
 			}
 		})
+	}
+
+	// Sanity check
+	if count := party.GetConnectedUserCount(); count != 0 {
+		t.Fatalf("Expected %d connected, got %d", 0, count)
 	}
 }
