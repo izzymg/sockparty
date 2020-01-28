@@ -18,8 +18,8 @@ const (
 	disconnect = "Disconnected."
 )
 
-// NewUser creates a new user from a websocket connection. Generates it a new unique ID for lookups.
-func NewUser(incoming chan Incoming, connection *websocket.Conn, opts *Options) (*User, error) {
+// newUser creates a new user from a websocket connection. Generates it a new unique ID for lookups.
+func newUser(incoming chan Incoming, connection *websocket.Conn, opts *Options) (*User, error) {
 	uid, err := uuid.NewRandom()
 	if err != nil {
 		return nil, fmt.Errorf("Failed to generate a UUID for a new user: %w", err)

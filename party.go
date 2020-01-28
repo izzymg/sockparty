@@ -63,7 +63,7 @@ func (party *Party) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	}
 
 	// Generate a new user
-	user, err := NewUser(
+	user, err := newUser(
 		party.Incoming,
 		conn,
 		party.opts,
