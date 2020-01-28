@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/rand"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"testing"
+	"time"
 
 	"nhooyr.io/websocket"
 
@@ -134,13 +136,38 @@ func TestAddUser(t *testing.T) {
 	}
 }
 
-// Creates a simple echo party server and tests it.
+// Make n conns, return cleanup
+func makeConns(n int) ([]*websocket.Conn, func()) {
+	var conns []*websocket.Conn
+	for i := 0; i < n; i++ {
+		conn, _, err := websocket.Dial(context.Background(), wsAddr(), nil)
+		if err != nil {
+			panic(err)
+		}
+		conns = append(conns, conn)
+	}
+
+	return conns, func() {
+		for _, conn := range conns {
+			conn.Close(websocket.StatusNormalClosure, "Exit")
+		}
+	}
+}
+
+func makeGarbageStrings(n int) []string {
+	rand.Seed(time.Now().UnixNano())
+	var ret []string
+	for i := 0; i < n; i++ {
+		ret = append(ret, fmt.Sprintf("%x", rand.Intn(600)))
+	}
+	return ret
+}
+
+// Creates a simple echo party server and tests it echos back correct random data.
 func TestMessageEach(t *testing.T) {
 	// Create a party to echo messages back
 	incoming := make(chan sockmessages.Incoming)
 	party := sockparty.NewParty("Party", incoming, noPing())
-	defer tServer(party)()
-
 	go func() {
 		for {
 			select {
@@ -158,67 +185,65 @@ func TestMessageEach(t *testing.T) {
 		}
 	}()
 
+	defer tServer(party)()
+
 	type msgType struct {
 		Event   string      `json:"event"`
 		Payload interface{} `json:"payload"`
 	}
-	msg := &msgType{
-		Event:   "hello",
-		Payload: "hey",
-	}
 
+	numConns := 10
 	closeReason := "Exiting"
-	conn, _, err := websocket.Dial(
-		context.Background(),
-		wsAddr(),
-		nil,
-	)
-	defer conn.Close(websocket.StatusNormalClosure, closeReason)
-	if err != nil {
-		t.Fatal(err)
-	}
+	ev := "echo"
+	conns, _ := makeConns(numConns)
+	//defer cleanup()
+	payloads := makeGarbageStrings(numConns)
 
-	recv := make(chan []byte)
-
-	// Start reading any messages coming in
-	go func() {
-		_, data, err := conn.Read(context.Background())
-		var ce websocket.CloseError
-		if err != nil {
-			// Expected close message with correct reason.
-			if errors.As(err, &ce) && ce.Reason == closeReason {
-				close(recv)
-				return
+	for index, conn := range conns {
+		recv := make(chan []byte)
+		// Start reading any messages coming in
+		go func() {
+			_, data, err := conn.Read(context.Background())
+			var ce websocket.CloseError
+			if err != nil {
+				// Expected close message with correct reason.
+				if errors.As(err, &ce) && ce.Reason == closeReason {
+					close(recv)
+					return
+				}
+				panic(err)
 			}
+			recv <- data
+		}()
+
+		// Write message out
+		marshalled, err := json.Marshal(&msgType{
+			Event:   ev,
+			Payload: payloads[index],
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = conn.Write(context.Background(), websocket.MessageText, marshalled)
+		if err != nil {
 			panic(err)
 		}
-		recv <- data
-	}()
 
-	// Write message out
-	marshalled, err := json.Marshal(msg)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = conn.Write(context.Background(), websocket.MessageText, marshalled)
-	if err != nil {
-		panic(err)
-	}
+		// Expect it echoed bacl
+		data := <-recv
+		unmarshalled := &msgType{}
+		err = json.Unmarshal(data, unmarshalled)
+		if err != nil {
+			t.Fatal(err)
+		}
 
-	// Expect it echoed bacl
-	data := <-recv
-	unmarshalled := &msgType{}
-	err = json.Unmarshal(data, unmarshalled)
-	if err != nil {
-		t.Fatal(err)
-	}
+		if unmarshalled.Event != ev {
+			t.Fatalf("Expected event %s, got %s", ev, unmarshalled.Event)
+		}
 
-	if unmarshalled.Event != msg.Event {
-		t.Fatalf("Expected event %s, got %s", msg.Event, unmarshalled.Event)
-	}
-
-	if unmarshalled.Payload != msg.Payload {
-		t.Fatalf("Expected payload %s, got %s", msg.Payload, unmarshalled.Payload)
+		if unmarshalled.Payload != payloads[index] {
+			t.Fatalf("Expected payload %s, got %s", payloads[index], unmarshalled.Payload)
+		}
 	}
 
 }
