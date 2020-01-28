@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"html"
 	"net/http"
+	"time"
 
 	"github.com/izzymg/sockparty"
 )
@@ -88,5 +89,11 @@ func main() {
 		Addr:    "localhost:3000",
 		Handler: party,
 	}
+
+	// Cleanly close party
+	go func() {
+		<-time.After(time.Minute)
+		party.End()
+	}()
 	fmt.Println(server.ListenAndServe())
 }
