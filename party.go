@@ -17,8 +17,8 @@ func NewParty(name string, incoming chan IncomingMessage, options *Options) *Par
 		Options:  options,
 		Incoming: incoming,
 
-		UserAddedHandler:   func(p *Party, u string) {},
-		UserRemovedHandler: func(p *Party, u string) {},
+		UserAddedHandler:   func(u string) {},
+		UserRemovedHandler: func(u string) {},
 		ErrorHandler:       func(e error) {},
 
 		connectedUsers: make(map[string]*User),
@@ -38,9 +38,9 @@ type Party struct {
 	ErrorHandler func(err error)
 
 	// Called when a user joins the party.
-	UserAddedHandler func(party *Party, userID string)
+	UserAddedHandler func(userID string)
 	// Called when a user has left the party. The user is already gone, messages to them will not be sent.
-	UserRemovedHandler func(party *Party, userID string)
+	UserRemovedHandler func(userID string)
 
 	// Connections currently active in this party
 	connectedUsers map[string]*User
@@ -126,7 +126,7 @@ func (party *Party) removeUser(id string) error {
 	defer party.mut.Unlock()
 	if user, ok := party.connectedUsers[id]; ok {
 		delete(party.connectedUsers, user.ID)
-		go party.UserRemovedHandler(party, user.ID)
+		go party.UserRemovedHandler(user.ID)
 		return nil
 	}
 	return errors.New("No such user")
@@ -137,7 +137,7 @@ func (party *Party) addUser(user *User) {
 	party.mut.Lock()
 	defer party.mut.Unlock()
 	party.connectedUsers[user.ID] = user
-	go party.UserAddedHandler(party, user.ID)
+	go party.UserAddedHandler(user.ID)
 }
 
 // Push to all users

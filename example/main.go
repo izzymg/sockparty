@@ -26,7 +26,7 @@ func main() {
 	party := sockparty.NewParty("Party", partyIncoming, sockparty.DefaultOptions())
 
 	// Broadcast users joining.
-	party.UserAddedHandler = func(party *sockparty.Party, userID string) {
+	party.UserAddedHandler = func(userID string) {
 		fmt.Printf("User %s joined the party\n", userID)
 		party.SendMessage(context.TODO(), &sockparty.OutgoingMessage{
 			Broadcast: true,
@@ -38,7 +38,7 @@ func main() {
 	}
 
 	// Broadcast users leaving.
-	party.UserRemovedHandler = func(party *sockparty.Party, userID string) {
+	party.UserRemovedHandler = func(userID string) {
 		fmt.Printf("User %s left the party\n", userID)
 		party.SendMessage(context.TODO(), &sockparty.OutgoingMessage{
 			Broadcast: true,
@@ -46,7 +46,6 @@ func main() {
 				Body: fmt.Sprintf("User %s left the party", userID),
 			},
 		})
-		fmt.Println("Sent")
 	}
 
 	/* Simple chat, take each message, validate it, and broadcast it back out. */
