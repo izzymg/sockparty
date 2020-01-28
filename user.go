@@ -26,8 +26,7 @@ func newUser(name string, connection *websocket.Conn, options *Options) (*User, 
 		connection: connection,
 		closed:     make(chan error),
 		// TODO: add buffers here
-		fromUser: make(chan IncomingMessage),
-		toUser:   make(chan OutgoingMessage),
+		incoming: make(chan IncomingMessage),
 	}, nil
 }
 
@@ -38,12 +37,16 @@ type User struct {
 	options    *Options
 	connection *websocket.Conn
 	closed     chan error
-	fromUser   chan IncomingMessage
-	toUser     chan OutgoingMessage
+	incoming   chan IncomingMessage
 }
 
-// Writes message to user
-func (user *User) writeMessage(ctx context.Context, message *OutgoingMessage) error {
+// Close ends the users connection, causing a cascade cleanup.
+func (user *User) Close(reason string) {
+	user.connection.Close(websocket.StatusNormalClosure, reason)
+}
+
+// SendOutgoing sends a message to the user.
+func (user *User) SendOutgoing(ctx context.Context, message *OutgoingMessage) error {
 	err := wsjson.Write(ctx, user.connection, message)
 	if err != nil {
 		return fmt.Errorf("Write JSON to user failed: %w", err)
@@ -52,7 +55,7 @@ func (user *User) writeMessage(ctx context.Context, message *OutgoingMessage) er
 }
 
 // Blocks until a message comes through from the connection and reads it.
-func (user *User) readMessage(ctx context.Context) (*IncomingMessage, error) {
+func (user *User) read(ctx context.Context) (*IncomingMessage, error) {
 
 	var payload json.RawMessage
 	im := &IncomingMessage{
@@ -68,14 +71,19 @@ func (user *User) readMessage(ctx context.Context) (*IncomingMessage, error) {
 	return im, nil
 }
 
-// Blocks until user responds
+// Blocks until user responds with a pong/context cancels
 func (user *User) ping(ctx context.Context) error {
-	return user.connection.Ping(ctx)
+	ctx, cancel := context.WithTimeout(ctx, user.options.PingTimeout)
+	defer cancel()
+	err := user.connection.Ping(ctx)
+	if err != nil {
+		return fmt.Errorf("Ping failed: %w", err)
+	}
+	return nil
 }
 
-/* Listen on any messages destined to the user through its toUser channel,
-and write them to the user. Will die if context is canceled or on write failure. */
-func (user *User) listenOutgoing(ctx context.Context) {
+/* Handle pings to the user, and drop when the context is canceled. */
+func (user *User) handleLifecycle(ctx context.Context) {
 	var ticker *time.Ticker
 	// Don't ping, ugly
 	if user.options.PingFrequency > 0 {
@@ -89,23 +97,13 @@ func (user *User) listenOutgoing(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			// Context dropped (Upgraded request may have been killed)
+			user.Close("Connection timed out.")
 			return
 		case <-ticker.C:
 			// Ping the user and wait for a pong back. Assume dead if no response.
-			pingctx, cancel := context.WithTimeout(ctx, user.options.PingTimeout)
-			err := user.ping(pingctx)
-			cancel()
+			err := user.ping(ctx)
 			if err != nil {
-				user.connection.Close(websocket.StatusNormalClosure, "Ping unsuccessful")
-				user.closed <- fmt.Errorf("Ping failed: %w", err)
-				return
-			}
-		case message := <-user.toUser:
-			err := user.writeMessage(ctx, &message)
-			if err != nil {
-				// TODO: Distinguish between different error types
-				user.connection.Close(websocket.StatusInternalError, "Write failure")
-				user.closed <- err
+				user.Close("Disconnected.")
 				return
 			}
 		}
@@ -114,7 +112,7 @@ func (user *User) listenOutgoing(ctx context.Context) {
 
 /* Listen on all incoming JSON messages from the client, writing them into the users'
 fromUser channel. Will die if the context is canceled or read message fails. */
-func (user *User) listenIncoming(ctx context.Context) {
+func (user *User) handleIncoming(ctx context.Context) {
 
 	limiter := user.options.RateLimiter
 	if limiter == nil {
@@ -122,26 +120,24 @@ func (user *User) listenIncoming(ctx context.Context) {
 	}
 
 	for {
-		select {
 		// Make sure the context isn't dead
+		select {
 		case <-ctx.Done():
+			user.Close("Connection timed out.")
 			return
 		default:
-			// Wait for the limiter
-			err := limiter.Wait(ctx)
-			if err != nil {
-				continue
-			}
-			// Read any JSON
-			message, err := user.readMessage(ctx)
-			if err != nil {
-				// Indicate the user is dead with an error
-				// TODO: check what kind of error and handle appropriately
-				user.connection.Close(websocket.StatusInternalError, "Read failure")
-				user.closed <- err
-				return
-			}
-			user.fromUser <- *message
 		}
+		// Wait for the limiter
+		err := limiter.Wait(ctx)
+		if err != nil {
+			continue
+		}
+		// Read any JSON
+		message, err := user.read(ctx)
+		if err != nil {
+			user.closed <- err
+			return
+		}
+		user.incoming <- *message
 	}
 }

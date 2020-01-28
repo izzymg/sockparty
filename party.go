@@ -11,10 +11,9 @@ import (
 // NewParty creates a new room for users to join.
 func NewParty(name string, options *Options) *Party {
 	return &Party{
-		Name:          name,
-		Options:       options,
-		StopListening: make(chan bool),
-		SendMessage:   make(chan OutgoingMessage),
+		Name:        name,
+		Options:     options,
+		SendMessage: make(chan OutgoingMessage),
 
 		UserAddedHandler:          func(p *Party, u *User) {},
 		UserRemovedHandler:        func(p *Party, u *User) {},
@@ -34,8 +33,6 @@ type Party struct {
 	Name string
 	// Configuration options for the party
 	Options *Options
-	// Close or send to this channel to stop the party from running
-	StopListening chan bool
 	// Send an outgoing message to users
 	SendMessage chan OutgoingMessage
 
@@ -100,20 +97,23 @@ func (party *Party) GetConnectedUserCount() int {
 	return len(party.connectedUsers)
 }
 
-/*Listen listens on the party's data channels and process any requests related to users.
-This blocks, and can be stopped by closing the party's Stop channel field. */
-func (party *Party) Listen() {
+/*
+Listen listens on the party's data channels and process any requests related to users.
+When the context is canceled, the party will attempt to cleanup all user
+connections, and this routine will exit.
+*/
+func (party *Party) Listen(ctx context.Context) {
 	for {
 		select {
 
-		case <-party.StopListening:
+		case <-ctx.Done():
+			party.removeUsers()
 			return
-
 		case message := <-party.SendMessage:
 			if message.Broadcast {
-				party.broadcast(message)
+				party.broadcast(ctx, &message)
 			} else {
-				party.messageUser(message)
+				party.messageUser(ctx, &message)
 			}
 
 		case user := <-party.addUser:
@@ -129,29 +129,27 @@ func (party *Party) Listen() {
 	}
 }
 
+// Close all user connections and remove them from the party.
+func (party *Party) removeUsers() {
+	for _, user := range party.connectedUsers {
+		user.Close("Party ending.")
+		delete(party.connectedUsers, user.ID)
+	}
+}
+
 // Push to all users
-func (party *Party) broadcast(message OutgoingMessage) {
+func (party *Party) broadcast(ctx context.Context, message *OutgoingMessage) {
 	for _, user := range party.connectedUsers {
 		message.UserID = user.ID
-		party.messageUser(message)
+		party.messageUser(ctx, message)
 	}
 }
 
 // Push to one user
-func (party *Party) messageUser(message OutgoingMessage) error {
+func (party *Party) messageUser(ctx context.Context, message *OutgoingMessage) {
 	if user, ok := party.connectedUsers[message.UserID]; ok {
-		// Don't block if the user isn't available.
-		// TODO: Timeout here.
-		select {
-		case user.toUser <- message:
-			break
-		default:
-			return fmt.Errorf("User blocked %s", user.ID)
-		}
-	} else {
-		return fmt.Errorf("No such user %s", message.UserID)
+		user.SendOutgoing(ctx, message)
 	}
-	return nil
 }
 
 /* Process user begins processing the user's requests.
@@ -161,8 +159,8 @@ or the user to close before deleting it and returning. */
 func (party *Party) processUser(ctx context.Context, user *User) error {
 
 	// Begin processing incoming and outgoing data.
-	go user.listenIncoming(ctx)
-	go user.listenOutgoing(ctx)
+	go user.handleIncoming(ctx)
+	go user.handleLifecycle(ctx)
 
 	for {
 		select {
@@ -170,7 +168,7 @@ func (party *Party) processUser(ctx context.Context, user *User) error {
 			// Delete and cleanup a closed user
 			party.removeUser <- user
 			return fmt.Errorf("Party: process user closed: %w", err)
-		case message := <-user.fromUser:
+		case message := <-user.incoming:
 			// Pass incoming messages to assigned handler
 			if handler, ok := party.messageHandlers[message.Event]; ok {
 				handler(party, message)
