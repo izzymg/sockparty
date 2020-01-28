@@ -11,12 +11,11 @@ import (
 )
 
 // NewParty creates a new room for users to join.
-func NewParty(name string, incoming chan IncomingMessage, outgoing chan OutgoingMessage, options *Options) *Party {
+func NewParty(name string, incoming chan IncomingMessage, options *Options) *Party {
 	return &Party{
-		Name:        name,
-		Options:     options,
-		SendMessage: outgoing,
-		Incoming:    incoming,
+		Name:     name,
+		Options:  options,
+		Incoming: incoming,
 
 		UserAddedHandler:   func(p *Party, u string) {},
 		UserRemovedHandler: func(p *Party, u string) {},
@@ -32,8 +31,6 @@ type Party struct {
 	Name string
 	// Configuration options for the party
 	Options *Options
-	// Send an outgoing message to users
-	SendMessage chan OutgoingMessage
 	// Receive messages
 	Incoming chan IncomingMessage
 
@@ -104,6 +101,15 @@ func (party *Party) GetConnectedUserCount() int {
 	return len(party.connectedUsers)
 }
 
+// SendMessage routes a message to the appropraite connected users.
+func (party *Party) SendMessage(ctx context.Context, message *OutgoingMessage) {
+	if message.Broadcast {
+		party.broadcast(ctx, message)
+	} else {
+		party.messageUser(ctx, message)
+	}
+}
+
 // End closes all user connections and remove them from the party. Not dumb, tries to close cleanly.
 func (party *Party) End() {
 	party.mut.Lock()
@@ -139,8 +145,7 @@ func (party *Party) broadcast(ctx context.Context, message *OutgoingMessage) {
 	party.mut.Lock()
 	defer party.mut.Unlock()
 	for _, user := range party.connectedUsers {
-		message.UserID = user.ID
-		party.messageUser(ctx, message)
+		user.SendOutgoing(ctx, message)
 	}
 }
 
