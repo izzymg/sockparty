@@ -10,7 +10,7 @@ It is currently in development, and may undergo breaking API changes.
 
 * [nhooyr/websocket](https://github.com/nhooyr/websocket)
 
-## Example & Features
+## Features
 
 On usescases, sockparty was built to provide a higher-level API for a WebSocket based chat-room and media player
 
@@ -19,42 +19,9 @@ On usescases, sockparty was built to provide a higher-level API for a WebSocket 
 * Built purely using JSON
 * Simply register a party as an HTTP handler to allow users to join
 
-#### [Full chat room example package](/example)
+## Example:
 
-#### Summary
-
-```go
-
-// Generate a new party
-party := sockparty.NewParty("A new room", &sockparty.Options{
-	PingTimeout:	time.Second * 10,
-        PingFrequency: 	time.Second * 20,
-	RateLimiter:   	rate.NewLimiter(rate.Every(time.Millisecond*100), 5),
-})
-
-// Register your own message events and handle them as you wish.
-party.SetMessageEvent("chat_message", func(party *sockparty.Party, message sockparty.Incoming) {
-        json.Unmarshal(message.Payload, ...)
-	
-	// Channel based API
-	party.SendMessage <- sockparty.Outgoing{
-		Broadcast: true,
-		// ...
-	}
-})
-
-// Respond to users joining, leaving, etc
-party.UserAddedHandler(...)
-
-// Start the party
-go party.Listen()
-
-// Party implements http.Handler, will upgrade requests to WebSocket
-server.Get("/join", party)
-
-
-party.StopListening <- true
-```
+See [full chat room example](/example) package
 
 ## Contributing
 
@@ -63,3 +30,6 @@ Submit a PR~
 
 ### TODO:
 * Max context timeouts
+* Channel based add/remove callbacks
+* Further tests/benchmarks
+* Restructure package layout

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"sync"
 
+	"github.com/google/uuid"
 	"github.com/izzymg/sockparty/connection"
 	"github.com/izzymg/sockparty/sockmessages"
 	"github.com/izzymg/sockparty/sockoptions"
@@ -20,11 +21,11 @@ func NewParty(name string, incoming chan sockmessages.Incoming, options *sockopt
 		opts:     options,
 		Incoming: incoming,
 
-		UserAddedHandler:   func(u string) {},
-		UserRemovedHandler: func(u string) {},
+		UserAddedHandler:   func(u uuid.UUID) {},
+		UserRemovedHandler: func(u uuid.UUID) {},
 		ErrorHandler:       func(e error) {},
 
-		connectedUsers: make(map[string]*connection.User),
+		connectedUsers: make(map[uuid.UUID]*connection.User),
 	}
 }
 
@@ -40,12 +41,12 @@ type Party struct {
 	ErrorHandler func(err error)
 
 	// Called when a user joins the party.
-	UserAddedHandler func(userID string)
+	UserAddedHandler func(userID uuid.UUID)
 	// Called when a user has left the party. The user is already gone, messages to them will not be sent.
-	UserRemovedHandler func(userID string)
+	UserRemovedHandler func(userID uuid.UUID)
 
 	opts           *sockoptions.Options
-	connectedUsers map[string]*connection.User
+	connectedUsers map[uuid.UUID]*connection.User
 	mut            sync.Mutex
 }
 
@@ -121,7 +122,7 @@ func (party *Party) End() {
 }
 
 // Removethe user from the party's list. Dumb op.
-func (party *Party) removeUser(id string) error {
+func (party *Party) removeUser(id uuid.UUID) error {
 	party.mut.Lock()
 	if user, ok := party.connectedUsers[id]; ok {
 		delete(party.connectedUsers, user.ID)

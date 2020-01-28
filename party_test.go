@@ -16,6 +16,7 @@ import (
 
 	"golang.org/x/time/rate"
 
+	"github.com/google/uuid"
 	"github.com/izzymg/sockparty"
 	"github.com/izzymg/sockparty/sockmessages"
 	"github.com/izzymg/sockparty/sockoptions"
@@ -94,7 +95,7 @@ func TestAddUser(t *testing.T) {
 			// User added handler should be invoked after dial.
 			count := 0
 			ctx, cancel := context.WithCancel(context.Background())
-			party.UserAddedHandler = func(userID string) {
+			party.UserAddedHandler = func(userID uuid.UUID) {
 				count++
 				cancel()
 			}
@@ -113,7 +114,7 @@ func TestAddUser(t *testing.T) {
 
 			// User removed should be invoked after close.
 			ctx, cancel = context.WithCancel(context.Background())
-			party.UserRemovedHandler = func(userID string) {
+			party.UserRemovedHandler = func(userID uuid.UUID) {
 				cancel()
 			}
 			// Perform close, want success

@@ -1,6 +1,10 @@
 package sockmessages
 
-import "encoding/json"
+import (
+	"encoding/json"
+
+	"github.com/google/uuid"
+)
 
 // Event is a string representing a message's event type.
 type Event string
@@ -8,7 +12,7 @@ type Event string
 // Incoming represents a socket message from a user, destined to the server.
 type Incoming struct {
 	Event   Event           `json:"event"`
-	UserID  string          `json:"-"`
+	UserID  uuid.UUID       `json:"-"`
 	Payload json.RawMessage `json:"payload"`
 }
 
@@ -19,7 +23,7 @@ otherwise the message can be sent to a specific user ID.
 */
 type Outgoing struct {
 	Broadcast bool        `json:"-"`
-	UserID    string      `json:"-"`
+	UserID    uuid.UUID   `json:"-"`
 	Event     Event       `json:"event"`
 	Payload   interface{} `json:"payload"`
 }

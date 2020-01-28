@@ -27,7 +27,7 @@ func NewUser(incoming chan sockmessages.Incoming, connection *websocket.Conn, op
 		return nil, fmt.Errorf("Failed to generate a UUID for a new user: %w", err)
 	}
 	return &User{
-		ID:         uid.String(),
+		ID:         uid,
 		incoming:   incoming,
 		opts:       opts,
 		connection: connection,
@@ -36,8 +36,7 @@ func NewUser(incoming chan sockmessages.Incoming, connection *websocket.Conn, op
 
 // User represents a websocket connection from a client.
 type User struct {
-	// TODO: UUID
-	ID         string
+	ID         uuid.UUID
 	Name       string
 	opts       *sockoptions.Options
 	connection *websocket.Conn
@@ -49,26 +48,23 @@ Listen begins processing the user's connection, sending information back to
 its given channels. This routine blocks.
 */
 func (user *User) Listen(ctx context.Context, closed chan error) {
+	// Cancel context when one routine exits, causing a cascade cleanup.
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	// TODO: remove prints
-
-	// Cancel context when one routine exits, causing a cascade cleanup.
+	/* Don't block on closed channel if no one is listening. */
 	go func() {
 		defer cancel()
 		select {
 		case closed <- user.handleIncoming(ctx):
 		default:
 		}
-
-		fmt.Println("Incoming returned")
 	}()
+
 	select {
 	case closed <- user.handleLifecycle(ctx):
 	default:
 	}
-	fmt.Println("Lifecycle returned")
 }
 
 // Close ends the users connection, causing a cascade cleanup.
