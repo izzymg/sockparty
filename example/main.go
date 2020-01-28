@@ -1,10 +1,11 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"html"
 	"net/http"
-	_ "net/http/pprof"
 
 	"github.com/izzymg/sockparty"
 )
@@ -13,77 +14,80 @@ import (
 
 func main() {
 
-	go func() {
-		fmt.Println(http.ListenAndServe("localhost:6060", nil))
-	}()
-
-	type ChatMessage struct {
+	// Simple chat message
+	type chatMessage struct {
+		// Body of the chat message.
 		Body string `json:"body"`
 	}
 
-	type ErrOut struct {
-		Err string `json:"err"`
-	}
+	/* Setup a new party. All incoming messages from party users
+	will be passed through the incoming channels. */
+	partyIncoming := make(chan sockparty.IncomingMessage)
+	party := sockparty.NewParty("Party", partyIncoming, sockparty.DefaultOptions())
 
-	// Setup a new party with a rate limiter and allowed client origin
-	party := sockparty.NewParty("Party", sockparty.DefaultOptions())
-	// Add some handlers
-
-	party.UserAddedHandler = func(party *sockparty.Party, user *sockparty.User) {
-		fmt.Printf("Log: user %s joined party %s\n", user.ID, party.Name)
-		party.SendMessage <- sockparty.OutgoingMessage{
+	// Broadcast users joining.
+	party.UserAddedHandler = func(party *sockparty.Party, userID string) {
+		fmt.Printf("User %s joined the party\n", userID)
+		party.SendMessage(context.TODO(), &sockparty.OutgoingMessage{
 			Broadcast: true,
-			Payload: ChatMessage{
-				Body: "Hello!!!",
+			Payload: chatMessage{
+				Body: fmt.Sprintf("User %s joined the party", userID),
 			},
-		}
-
-	}
-	party.UserRemovedHandler = func(party *sockparty.Party, user *sockparty.User) {
-		fmt.Printf("Log: user %s left party %s\n", user.ID, party.Name)
+		})
+		fmt.Println("Sent")
 	}
 
-	party.UserInvalidMessageHandler = func(party *sockparty.Party, user *sockparty.User, message sockparty.IncomingMessage) {
-		fmt.Printf("Log: user %s sent an invalid message to party %s\n", user.ID, party.Name)
-		party.SendMessage <- sockparty.OutgoingMessage{
-			Event:   "error",
-			Payload: ErrOut{Err: "Invalid message event received"},
-			UserID:  user.ID,
-		}
-	}
-
-	/* Set event handlers. When a JSON message is sent with the format of { "event": "your_event" },
-	the handler with the corresponding event name will be triggered */
-	party.SetMessageEvent("chat_message", func(party *sockparty.Party, message sockparty.IncomingMessage) {
-		cm := &ChatMessage{}
-
-		// Unmarshal payload into expected data format
-		err := json.Unmarshal(message.Payload, cm)
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-
-		party.SendMessage <- sockparty.OutgoingMessage{
-			Event:     "chat_message",
+	// Broadcast users leaving.
+	party.UserRemovedHandler = func(party *sockparty.Party, userID string) {
+		fmt.Printf("User %s left the party\n", userID)
+		party.SendMessage(context.TODO(), &sockparty.OutgoingMessage{
 			Broadcast: true,
-			Payload:   cm,
-		}
-	})
+			Payload: chatMessage{
+				Body: fmt.Sprintf("User %s left the party", userID),
+			},
+		})
+		fmt.Println("Sent")
+	}
 
-	// Instruct the party to listen on its channels and defer a stop command.
-	// Listen blocks.
-	go party.Listen()
-	defer func() {
-		party.StopListening <- true
+	/* Simple chat, take each message, validate it, and broadcast it back out. */
+	go func() {
+		for {
+			select {
+			case message := <-partyIncoming:
+				// Check message type
+				if message.Event != "chat_message" {
+					continue
+				}
+				// Unmarshal the JSON payload.
+				parsedMessage := &chatMessage{}
+				err := json.Unmarshal(message.Payload, parsedMessage)
+				if err != nil {
+					// Send invalid payload error
+					party.SendMessage(context.TODO(), &sockparty.OutgoingMessage{
+						UserID:  message.UserID,
+						Event:   "error",
+						Payload: "Invalid JSON",
+					})
+				}
+
+				// Broadcast the data back out to users.
+				party.SendMessage(context.TODO(), &sockparty.OutgoingMessage{
+					Broadcast: true,
+					Event:     "chat_message",
+					Payload: chatMessage{
+						Body: html.EscapeString(parsedMessage.Body),
+					},
+				})
+			}
+		}
 	}()
 
+	/* Party implements http.Handler and will treat requests as a new user
+	joining the party by upgrading them to WebSocket. You could wrap this by calling
+	ServeHTTP directly from within a handler. */
 	server := http.Server{
-		Addr: "localhost:3000",
-		/* Party implements http.Handler and will treat requests
-		as a new user joining the party by upgrading them to WebSocket. */
+		Addr:    "localhost:3000",
 		Handler: party,
 	}
-
-	server.ListenAndServe()
+	fmt.Println(server.ListenAndServe())
 }
