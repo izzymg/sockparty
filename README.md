@@ -10,13 +10,12 @@ It is currently in development, and may undergo breaking API changes.
 
 * [nhooyr/websocket](https://github.com/nhooyr/websocket)
 
-## Features
+## About
 
 On usescases, sockparty was built to provide a higher-level API for a WebSocket based chat-room and media player
 
-* Register "types" for incoming messages and provide your own decoding, parsing & response handler.
+* JSON based messages
 * Channel messages to any or all users in a party
-* Built purely using JSON
 * Simply register a party as an HTTP handler to allow users to join
 
 ## Example:
