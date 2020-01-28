@@ -55,10 +55,17 @@ func (user *User) Listen(ctx context.Context, closed chan error) {
 	// Cancel context when one routine exits, causing a cascade cleanup.
 	go func() {
 		defer cancel()
-		closed <- user.handleIncoming(ctx)
+		select {
+		case closed <- user.handleIncoming(ctx):
+		default:
+		}
+
 		fmt.Println("Incoming returned")
 	}()
-	closed <- user.handleLifecycle(ctx)
+	select {
+	case closed <- user.handleLifecycle(ctx):
+	default:
+	}
 	fmt.Println("Lifecycle returned")
 }
 
