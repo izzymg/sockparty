@@ -2,8 +2,10 @@ package sockparty
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
+	"sync"
 
 	"nhooyr.io/websocket"
 )
@@ -22,8 +24,6 @@ func NewParty(name string, incoming chan IncomingMessage, outgoing chan Outgoing
 		ErrorHandler:              func(e error) {},
 
 		connectedUsers: make(map[string]*User),
-		addUser:        make(chan *User),
-		removeUser:     make(chan *User),
 	}
 }
 
@@ -45,11 +45,9 @@ type Party struct {
 
 	// Connections currently active in this party
 	connectedUsers map[string]*User
+	mut            sync.Mutex
 
 	messageHandlers map[MessageEvent]MessageHandler
-
-	addUser    chan *User
-	removeUser chan *User
 }
 
 /*ServeHTTP handles an HTTP request to join the room and upgrade to WebSocket. As this adds users to the party,
@@ -79,7 +77,8 @@ func (party *Party) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	}
 
 	// Add the user and begin processing
-	party.addUser <- user
+	party.addUser(user)
+
 	closed := make(chan error)
 	go user.Listen(req.Context(), closed)
 	for {
@@ -89,15 +88,10 @@ func (party *Party) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 			if err != nil {
 				go party.ErrorHandler(err)
 			}
-			party.removeUser <- user
+			party.removeUser(user.ID)
 			return
 		}
 	}
-}
-
-// SetMessageEvent sets the handler for messages with some event type to a handler function.
-func (party *Party) SetMessageEvent(event MessageEvent, handler MessageHandler) {
-	party.messageHandlers[event] = handler
 }
 
 // GetConnectedUserCount returns the number of currently connected users.
@@ -105,33 +99,28 @@ func (party *Party) GetConnectedUserCount() int {
 	return len(party.connectedUsers)
 }
 
-/*
-Listen listens on the party's data channels and process any requests related to users.
-When the context is canceled, the party will attempt to cleanup all user
-connections, and this routine will exit.
-*/
-func (party *Party) Listen(ctx context.Context) {
-	for {
-		select {
-
-		case <-ctx.Done():
-			party.removeUsers()
-			return
-		case user := <-party.addUser:
-			// Add user to map
-			party.connectedUsers[user.ID] = user
-			go party.UserAddedHandler(party, user)
-
-		case user := <-party.removeUser:
-			// Remove user from map
-			delete(party.connectedUsers, user.ID)
-			go party.UserRemovedHandler(party, user)
-		}
+// Removethe user from the party's list. Dumb op.
+func (party *Party) removeUser(id string) error {
+	party.mut.Lock()
+	defer party.mut.Unlock()
+	if user, ok := party.connectedUsers[id]; ok {
+		delete(party.connectedUsers, user.ID)
+		return nil
 	}
+	return errors.New("No such user")
 }
 
-// Close all user connections and remove them from the party.
+// Add a user to the party's list. Dumb op.
+func (party *Party) addUser(user *User) {
+	party.mut.Lock()
+	defer party.mut.Unlock()
+	party.connectedUsers[user.ID] = user
+}
+
+// Close all user connections and remove them from the party. Not dumb, tries to close cleanly.
 func (party *Party) removeUsers() {
+	party.mut.Lock()
+	defer party.mut.Unlock()
 	for _, user := range party.connectedUsers {
 		user.Close("Party ending.")
 		delete(party.connectedUsers, user.ID)
@@ -140,6 +129,8 @@ func (party *Party) removeUsers() {
 
 // Push to all users
 func (party *Party) broadcast(ctx context.Context, message *OutgoingMessage) {
+	party.mut.Lock()
+	defer party.mut.Unlock()
 	for _, user := range party.connectedUsers {
 		message.UserID = user.ID
 		party.messageUser(ctx, message)
@@ -148,6 +139,8 @@ func (party *Party) broadcast(ctx context.Context, message *OutgoingMessage) {
 
 // Push to one user
 func (party *Party) messageUser(ctx context.Context, message *OutgoingMessage) {
+	party.mut.Lock()
+	defer party.mut.Unlock()
 	if user, ok := party.connectedUsers[message.UserID]; ok {
 		user.SendOutgoing(ctx, message)
 	}
