@@ -2,6 +2,8 @@ package sockparty_test
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -39,6 +41,10 @@ func getAddr() string {
 	return "localhost:3000"
 }
 
+func wsAddr() string {
+	return fmt.Sprintf("ws://%s", getAddr())
+}
+
 // Creates an HTTP server for testing, returns cleanup function.
 func tServer(handler http.Handler) func() {
 	server := http.Server{
@@ -59,7 +65,7 @@ func tServer(handler http.Handler) func() {
 // Test party's serving of new users
 func TestAddUser(t *testing.T) {
 	incoming := make(chan sockmessages.Incoming)
-	party := sockparty.NewParty("Party", incoming, sockoptions.DefaultOptions())
+	party := sockparty.NewParty("Party", incoming, noPing())
 	defer tServer(party)()
 
 	// Generic request
@@ -92,7 +98,7 @@ func TestAddUser(t *testing.T) {
 			}
 
 			// Perform dial, want successful connection
-			conn, _, err := websocket.Dial(ctx, fmt.Sprintf("ws://%s", getAddr()), nil)
+			conn, _, err := websocket.Dial(ctx, wsAddr(), nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -126,4 +132,93 @@ func TestAddUser(t *testing.T) {
 	if count := party.GetConnectedUserCount(); count != 0 {
 		t.Fatalf("Expected %d connected, got %d", 0, count)
 	}
+}
+
+// Creates a simple echo party server and tests it.
+func TestMessageEach(t *testing.T) {
+	// Create a party to echo messages back
+	incoming := make(chan sockmessages.Incoming)
+	party := sockparty.NewParty("Party", incoming, noPing())
+	defer tServer(party)()
+
+	go func() {
+		for {
+			select {
+			case message, ok := <-incoming:
+				if !ok {
+					panic("Incoming not ok")
+				}
+				// Echo back
+				party.SendMessage(context.Background(), &sockmessages.Outgoing{
+					Event:   message.Event,
+					UserID:  message.UserID,
+					Payload: message.Payload,
+				})
+			}
+		}
+	}()
+
+	type msgType struct {
+		Event   string      `json:"event"`
+		Payload interface{} `json:"payload"`
+	}
+	msg := &msgType{
+		Event:   "hello",
+		Payload: "hey",
+	}
+
+	closeReason := "Exiting"
+	conn, _, err := websocket.Dial(
+		context.Background(),
+		wsAddr(),
+		nil,
+	)
+	defer conn.Close(websocket.StatusNormalClosure, closeReason)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	recv := make(chan []byte)
+
+	// Start reading any messages coming in
+	go func() {
+		_, data, err := conn.Read(context.Background())
+		var ce websocket.CloseError
+		if err != nil {
+			// Expected close message with correct reason.
+			if errors.As(err, &ce) && ce.Reason == closeReason {
+				close(recv)
+				return
+			}
+			panic(err)
+		}
+		recv <- data
+	}()
+
+	// Write message out
+	marshalled, err := json.Marshal(msg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = conn.Write(context.Background(), websocket.MessageText, marshalled)
+	if err != nil {
+		panic(err)
+	}
+
+	// Expect it echoed bacl
+	data := <-recv
+	unmarshalled := &msgType{}
+	err = json.Unmarshal(data, unmarshalled)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if unmarshalled.Event != msg.Event {
+		t.Fatalf("Expected event %s, got %s", msg.Event, unmarshalled.Event)
+	}
+
+	if unmarshalled.Payload != msg.Payload {
+		t.Fatalf("Expected payload %s, got %s", msg.Payload, unmarshalled.Payload)
+	}
+
 }
