@@ -9,21 +9,21 @@ import (
 )
 
 // NewParty creates a new room for users to join.
-func NewParty(name string, options *Options) *Party {
+func NewParty(name string, incoming chan IncomingMessage, outgoing chan OutgoingMessage, options *Options) *Party {
 	return &Party{
 		Name:        name,
 		Options:     options,
-		SendMessage: make(chan OutgoingMessage),
+		SendMessage: outgoing,
+		Incoming:    incoming,
 
 		UserAddedHandler:          func(p *Party, u *User) {},
 		UserRemovedHandler:        func(p *Party, u *User) {},
 		UserInvalidMessageHandler: func(p *Party, u *User, m IncomingMessage) {},
 		ErrorHandler:              func(e error) {},
 
-		messageHandlers: make(map[MessageEvent]MessageHandler),
-		connectedUsers:  make(map[string]*User),
-		addUser:         make(chan *User),
-		removeUser:      make(chan *User),
+		connectedUsers: make(map[string]*User),
+		addUser:        make(chan *User),
+		removeUser:     make(chan *User),
 	}
 }
 
@@ -35,6 +35,8 @@ type Party struct {
 	Options *Options
 	// Send an outgoing message to users
 	SendMessage chan OutgoingMessage
+	// Receive messages
+	Incoming chan IncomingMessage
 
 	ErrorHandler              func(err error)
 	UserAddedHandler          func(party *Party, user *User)
@@ -63,27 +65,33 @@ func (party *Party) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	// Generate a new user structure
+	// Generate a new user
 	user, err := newUser(
-		"User",
+		party.Incoming,
 		conn,
 		party.Options,
 	)
 
 	if err != nil {
-		party.ErrorHandler(fmt.Errorf("Failed to create new user: %v", err))
+		go party.ErrorHandler(fmt.Errorf("Failed to create new user: %v", err))
 		conn.Close(websocket.StatusInternalError, "User creation failure.")
 		return
 	}
 
 	// Add the user and begin processing
 	party.addUser <- user
-
-	// Blocks
-	err = party.processUser(req.Context(), user)
-	// User has left, processing has ended
-	if err != nil {
-		party.ErrorHandler(err)
+	closed := make(chan error)
+	go user.Listen(req.Context(), closed)
+	for {
+		select {
+		case err := <-closed:
+			// User listen closed
+			if err != nil {
+				go party.ErrorHandler(err)
+			}
+			party.removeUser <- user
+			return
+		}
 	}
 }
 
@@ -109,13 +117,6 @@ func (party *Party) Listen(ctx context.Context) {
 		case <-ctx.Done():
 			party.removeUsers()
 			return
-		case message := <-party.SendMessage:
-			if message.Broadcast {
-				party.broadcast(ctx, &message)
-			} else {
-				party.messageUser(ctx, &message)
-			}
-
 		case user := <-party.addUser:
 			// Add user to map
 			party.connectedUsers[user.ID] = user
@@ -149,32 +150,5 @@ func (party *Party) broadcast(ctx context.Context, message *OutgoingMessage) {
 func (party *Party) messageUser(ctx context.Context, message *OutgoingMessage) {
 	if user, ok := party.connectedUsers[message.UserID]; ok {
 		user.SendOutgoing(ctx, message)
-	}
-}
-
-/* Process user begins processing the user's requests.
-If the HTTP request is canceled for any reason, the context will go with it,
-cascading and cleaning up. This function blocks, waiting for any messages from the user
-or the user to close before deleting it and returning. */
-func (party *Party) processUser(ctx context.Context, user *User) error {
-
-	// Begin processing incoming and outgoing data.
-	go user.handleIncoming(ctx)
-	go user.handleLifecycle(ctx)
-
-	for {
-		select {
-		case err := <-user.closed:
-			// Delete and cleanup a closed user
-			party.removeUser <- user
-			return fmt.Errorf("Party: process user closed: %w", err)
-		case message := <-user.incoming:
-			// Pass incoming messages to assigned handler
-			if handler, ok := party.messageHandlers[message.Event]; ok {
-				handler(party, message)
-				continue
-			}
-			party.UserInvalidMessageHandler(party, user, message)
-		}
 	}
 }

@@ -62,6 +62,4 @@ Submit a PR~
 
 
 ### TODO:
-* Rewrite tests
-* Add authentication function to parties
-* Investigate pooling message buffers
+* Max context timeouts
