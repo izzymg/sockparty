@@ -1,4 +1,4 @@
-package sockparty
+package sockoptions
 
 import (
 	"time"

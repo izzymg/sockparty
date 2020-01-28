@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/izzymg/sockparty"
+	"github.com/izzymg/sockparty/sockmessages"
+	"github.com/izzymg/sockparty/sockoptions"
 )
 
 /* Chat room example with SockParty */
@@ -23,13 +25,13 @@ func main() {
 
 	/* Setup a new party. All incoming messages from party users
 	will be passed through the incoming channels. */
-	partyIncoming := make(chan sockparty.IncomingMessage)
-	party := sockparty.NewParty("Party", partyIncoming, sockparty.DefaultOptions())
+	partyIncoming := make(chan sockmessages.Incoming)
+	party := sockparty.NewParty("Party", partyIncoming, sockoptions.DefaultOptions())
 
 	// Broadcast users joining.
 	party.UserAddedHandler = func(userID string) {
 		fmt.Printf("User %s joined the party\n", userID)
-		party.SendMessage(context.TODO(), &sockparty.OutgoingMessage{
+		party.SendMessage(context.TODO(), &sockmessages.Outgoing{
 			Broadcast: true,
 			Payload: chatMessage{
 				Body: fmt.Sprintf("User %s joined the party", userID),
@@ -41,7 +43,7 @@ func main() {
 	// Broadcast users leaving.
 	party.UserRemovedHandler = func(userID string) {
 		fmt.Printf("User %s left the party\n", userID)
-		party.SendMessage(context.TODO(), &sockparty.OutgoingMessage{
+		party.SendMessage(context.TODO(), &sockmessages.Outgoing{
 			Broadcast: true,
 			Payload: chatMessage{
 				Body: fmt.Sprintf("User %s left the party", userID),
@@ -63,7 +65,7 @@ func main() {
 				err := json.Unmarshal(message.Payload, parsedMessage)
 				if err != nil {
 					// Send invalid payload error
-					party.SendMessage(context.TODO(), &sockparty.OutgoingMessage{
+					party.SendMessage(context.TODO(), &sockmessages.Outgoing{
 						UserID:  message.UserID,
 						Event:   "error",
 						Payload: "Invalid JSON",
@@ -71,7 +73,7 @@ func main() {
 				}
 
 				// Broadcast the data back out to users.
-				party.SendMessage(context.TODO(), &sockparty.OutgoingMessage{
+				party.SendMessage(context.TODO(), &sockmessages.Outgoing{
 					Broadcast: true,
 					Event:     "chat_message",
 					Payload: chatMessage{

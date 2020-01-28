@@ -33,11 +33,11 @@ party := sockparty.NewParty("A new room", &sockparty.Options{
 })
 
 // Register your own message events and handle them as you wish.
-party.SetMessageEvent("chat_message", func(party *sockparty.Party, message sockparty.IncomingMessage) {
+party.SetMessageEvent("chat_message", func(party *sockparty.Party, message sockparty.Incoming) {
         json.Unmarshal(message.Payload, ...)
 	
 	// Channel based API
-	party.SendMessage <- sockparty.OutgoingMessage{
+	party.SendMessage <- sockparty.Outgoing{
 		Broadcast: true,
 		// ...
 	}

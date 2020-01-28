@@ -1,4 +1,4 @@
-package sockparty
+package connection
 
 import (
 	"context"
@@ -11,6 +11,8 @@ import (
 	"nhooyr.io/websocket/wsjson"
 
 	"github.com/google/uuid"
+	"github.com/izzymg/sockparty/sockmessages"
+	"github.com/izzymg/sockparty/sockoptions"
 )
 
 const (
@@ -18,8 +20,8 @@ const (
 	disconnect = "Disconnected."
 )
 
-// Create a new user from a websocket connection. Generates it a new unique ID for lookups.
-func newUser(incoming chan IncomingMessage, connection *websocket.Conn, options *Options) (*User, error) {
+// NewUser creates a new user from a websocket connection. Generates it a new unique ID for lookups.
+func NewUser(incoming chan sockmessages.Incoming, connection *websocket.Conn, opts *sockoptions.Options) (*User, error) {
 	uid, err := uuid.NewRandom()
 	if err != nil {
 		return nil, fmt.Errorf("Failed to generate a UUID for a new user: %w", err)
@@ -27,7 +29,7 @@ func newUser(incoming chan IncomingMessage, connection *websocket.Conn, options 
 	return &User{
 		ID:         uid.String(),
 		incoming:   incoming,
-		options:    options,
+		opts:       opts,
 		connection: connection,
 	}, nil
 }
@@ -37,9 +39,9 @@ type User struct {
 	// TODO: UUID
 	ID         string
 	Name       string
-	options    *Options
+	opts       *sockoptions.Options
 	connection *websocket.Conn
-	incoming   chan IncomingMessage
+	incoming   chan sockmessages.Incoming
 }
 
 /*
@@ -79,7 +81,7 @@ func (user *User) Close(reason string) error {
 }
 
 // SendOutgoing sends a message to the user.
-func (user *User) SendOutgoing(ctx context.Context, message *OutgoingMessage) error {
+func (user *User) SendOutgoing(ctx context.Context, message *sockmessages.Outgoing) error {
 	err := wsjson.Write(ctx, user.connection, message)
 	if err != nil {
 		return fmt.Errorf("Write JSON to user failed: %w", err)
@@ -91,8 +93,8 @@ func (user *User) SendOutgoing(ctx context.Context, message *OutgoingMessage) er
 func (user *User) handleLifecycle(ctx context.Context) error {
 	var ticker *time.Ticker
 	// Don't ping, ugly
-	if user.options.PingFrequency > 0 {
-		ticker = time.NewTicker(user.options.PingFrequency)
+	if user.opts.PingFrequency > 0 {
+		ticker = time.NewTicker(user.opts.PingFrequency)
 	} else {
 		ticker = time.NewTicker(time.Second)
 		ticker.Stop()
@@ -119,7 +121,7 @@ func (user *User) handleLifecycle(ctx context.Context) error {
 incoming channel. Will die if the context is canceled or read message fails. */
 func (user *User) handleIncoming(ctx context.Context) error {
 
-	limiter := user.options.RateLimiter
+	limiter := user.opts.RateLimiter
 	if limiter == nil {
 		limiter = rate.NewLimiter(rate.Inf, 1)
 	}
@@ -150,10 +152,10 @@ func (user *User) handleIncoming(ctx context.Context) error {
 }
 
 // Blocks until a message comes through from the connection and reads it.
-func (user *User) read(ctx context.Context) (*IncomingMessage, error) {
+func (user *User) read(ctx context.Context) (*sockmessages.Incoming, error) {
 
 	var payload json.RawMessage
-	im := &IncomingMessage{
+	im := &sockmessages.Incoming{
 		UserID:  user.ID,
 		Payload: payload,
 	}
@@ -168,7 +170,7 @@ func (user *User) read(ctx context.Context) (*IncomingMessage, error) {
 
 // Blocks until user responds with a pong/context cancels
 func (user *User) ping(ctx context.Context) error {
-	ctx, cancel := context.WithTimeout(ctx, user.options.PingTimeout)
+	ctx, cancel := context.WithTimeout(ctx, user.opts.PingTimeout)
 	defer cancel()
 	err := user.connection.Ping(ctx)
 	if err != nil {

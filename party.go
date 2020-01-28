@@ -7,21 +7,24 @@ import (
 	"net/http"
 	"sync"
 
+	"github.com/izzymg/sockparty/connection"
+	"github.com/izzymg/sockparty/sockmessages"
+	"github.com/izzymg/sockparty/sockoptions"
 	"nhooyr.io/websocket"
 )
 
 // NewParty creates a new room for users to join.
-func NewParty(name string, incoming chan IncomingMessage, options *Options) *Party {
+func NewParty(name string, incoming chan sockmessages.Incoming, options *sockoptions.Options) *Party {
 	return &Party{
 		Name:     name,
-		Options:  options,
+		opts:     options,
 		Incoming: incoming,
 
 		UserAddedHandler:   func(u string) {},
 		UserRemovedHandler: func(u string) {},
 		ErrorHandler:       func(e error) {},
 
-		connectedUsers: make(map[string]*User),
+		connectedUsers: make(map[string]*connection.User),
 	}
 }
 
@@ -29,10 +32,9 @@ func NewParty(name string, incoming chan IncomingMessage, options *Options) *Par
 type Party struct {
 	// Human readable name of the party
 	Name string
-	// Configuration options for the party
-	Options *Options
+
 	// Receive messages
-	Incoming chan IncomingMessage
+	Incoming chan sockmessages.Incoming
 
 	// Called when an error occurs within the party.
 	ErrorHandler func(err error)
@@ -42,11 +44,9 @@ type Party struct {
 	// Called when a user has left the party. The user is already gone, messages to them will not be sent.
 	UserRemovedHandler func(userID string)
 
-	// Connections currently active in this party
-	connectedUsers map[string]*User
+	opts           *sockoptions.Options
+	connectedUsers map[string]*connection.User
 	mut            sync.Mutex
-
-	messageHandlers map[MessageEvent]MessageHandler
 }
 
 /*
@@ -57,7 +57,7 @@ func (party *Party) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 
 	// Upgrade the HTTP request to a socket connection
 	conn, err := websocket.Accept(rw, req, &websocket.AcceptOptions{
-		InsecureSkipVerify: party.Options.AllowCrossOrigin,
+		InsecureSkipVerify: party.opts.AllowCrossOrigin,
 	})
 	if err != nil {
 		party.ErrorHandler(fmt.Errorf("Failed to upgrade websocket connection: %v", err))
@@ -65,10 +65,10 @@ func (party *Party) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	}
 
 	// Generate a new user
-	user, err := newUser(
+	user, err := connection.NewUser(
 		party.Incoming,
 		conn,
-		party.Options,
+		party.opts,
 	)
 
 	if err != nil {
@@ -102,7 +102,7 @@ func (party *Party) GetConnectedUserCount() int {
 }
 
 // SendMessage routes a message to the appropraite connected users.
-func (party *Party) SendMessage(ctx context.Context, message *OutgoingMessage) {
+func (party *Party) SendMessage(ctx context.Context, message *sockmessages.Outgoing) {
 	if message.Broadcast {
 		party.broadcast(ctx, message)
 	} else {
@@ -133,7 +133,7 @@ func (party *Party) removeUser(id string) error {
 }
 
 // Add a user to the party's list. Dumb op.
-func (party *Party) addUser(user *User) {
+func (party *Party) addUser(user *connection.User) {
 	party.mut.Lock()
 	defer party.mut.Unlock()
 	party.connectedUsers[user.ID] = user
@@ -141,7 +141,7 @@ func (party *Party) addUser(user *User) {
 }
 
 // Push to all users
-func (party *Party) broadcast(ctx context.Context, message *OutgoingMessage) {
+func (party *Party) broadcast(ctx context.Context, message *sockmessages.Outgoing) {
 	party.mut.Lock()
 	defer party.mut.Unlock()
 	for _, user := range party.connectedUsers {
@@ -150,7 +150,7 @@ func (party *Party) broadcast(ctx context.Context, message *OutgoingMessage) {
 }
 
 // Push to one user
-func (party *Party) messageUser(ctx context.Context, message *OutgoingMessage) {
+func (party *Party) messageUser(ctx context.Context, message *sockmessages.Outgoing) {
 	party.mut.Lock()
 	defer party.mut.Unlock()
 	if user, ok := party.connectedUsers[message.UserID]; ok {
