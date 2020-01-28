@@ -8,9 +8,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/izzymg/sockparty"
-	"github.com/izzymg/sockparty/sockmessages"
-	"github.com/izzymg/sockparty/sockoptions"
 )
 
 /* Chat room example with SockParty */
@@ -25,13 +24,13 @@ func main() {
 
 	/* Setup a new party. All incoming messages from party users
 	will be passed through the incoming channels. */
-	partyIncoming := make(chan sockmessages.Incoming)
-	party := sockparty.NewParty("Party", partyIncoming, sockoptions.DefaultOptions())
+	partyIncoming := make(chan sockparty.Incoming)
+	party := sockparty.NewParty("Party", partyIncoming, sockparty.DefaultOptions())
 
 	// Broadcast users joining.
-	party.UserAddedHandler = func(userID string) {
+	party.UserAddedHandler = func(userID uuid.UUID) {
 		fmt.Printf("User %s joined the party\n", userID)
-		party.SendMessage(context.TODO(), &sockmessages.Outgoing{
+		party.SendMessage(context.TODO(), &sockparty.Outgoing{
 			Broadcast: true,
 			Payload: chatMessage{
 				Body: fmt.Sprintf("User %s joined the party", userID),
@@ -41,9 +40,9 @@ func main() {
 	}
 
 	// Broadcast users leaving.
-	party.UserRemovedHandler = func(userID string) {
+	party.UserRemovedHandler = func(userID uuid.UUID) {
 		fmt.Printf("User %s left the party\n", userID)
-		party.SendMessage(context.TODO(), &sockmessages.Outgoing{
+		party.SendMessage(context.TODO(), &sockparty.Outgoing{
 			Broadcast: true,
 			Payload: chatMessage{
 				Body: fmt.Sprintf("User %s left the party", userID),
@@ -65,7 +64,7 @@ func main() {
 				err := json.Unmarshal(message.Payload, parsedMessage)
 				if err != nil {
 					// Send invalid payload error
-					party.SendMessage(context.TODO(), &sockmessages.Outgoing{
+					party.SendMessage(context.TODO(), &sockparty.Outgoing{
 						UserID:  message.UserID,
 						Event:   "error",
 						Payload: "Invalid JSON",
@@ -73,7 +72,7 @@ func main() {
 				}
 
 				// Broadcast the data back out to users.
-				party.SendMessage(context.TODO(), &sockmessages.Outgoing{
+				party.SendMessage(context.TODO(), &sockparty.Outgoing{
 					Broadcast: true,
 					Event:     "chat_message",
 					Payload: chatMessage{
