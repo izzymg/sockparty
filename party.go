@@ -123,20 +123,21 @@ func (party *Party) End() {
 // Removethe user from the party's list. Dumb op.
 func (party *Party) removeUser(id string) error {
 	party.mut.Lock()
-	defer party.mut.Unlock()
 	if user, ok := party.connectedUsers[id]; ok {
 		delete(party.connectedUsers, user.ID)
+		party.mut.Unlock()
 		go party.UserRemovedHandler(user.ID)
 		return nil
 	}
+	party.mut.Unlock()
 	return errors.New("No such user")
 }
 
 // Add a user to the party's list. Dumb op.
 func (party *Party) addUser(user *connection.User) {
 	party.mut.Lock()
-	defer party.mut.Unlock()
 	party.connectedUsers[user.ID] = user
+	party.mut.Unlock()
 	go party.UserAddedHandler(user.ID)
 }
 

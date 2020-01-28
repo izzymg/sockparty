@@ -5,9 +5,10 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"nhooyr.io/websocket"
 	"os"
 	"testing"
+
+	"nhooyr.io/websocket"
 
 	"golang.org/x/time/rate"
 
@@ -35,7 +36,7 @@ func getAddr() string {
 	if addr, ok := os.LookupEnv("TEST_ADDR"); ok {
 		return addr
 	}
-	return "localhost:3400"
+	return "localhost:3000"
 }
 
 // Creates an HTTP server for testing, returns cleanup function.
@@ -73,15 +74,30 @@ func TestAddUser(t *testing.T) {
 		if rr.Code != http.StatusBadRequest {
 			t.Fatalf("Expected bad request, got %d", rr.Code)
 		}
-	})
-
-	// Proper WS request
-	t.Run("OK", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-		_, _, err := websocket.Dial(ctx, fmt.Sprintf("ws://%s", getAddr()), nil)
-		if err != nil {
-			t.Fatal(err)
+		if count := party.GetConnectedUserCount(); count != 0 {
+			t.Fatalf("Expected %d connected, got %d", 0, count)
 		}
 	})
+
+	for i := 0; i < 10; i++ {
+		// Proper WS request
+		t.Run("OK", func(t *testing.T) {
+			count := 0
+			ctx, cancel := context.WithCancel(context.Background())
+			party.UserAddedHandler = func(userID string) {
+				// User added handler should be called
+				count++
+				cancel()
+			}
+			_, _, err := websocket.Dial(ctx, fmt.Sprintf("ws://%s", getAddr()), nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			<-ctx.Done()
+
+			if count != 1 {
+				t.Fatalf("Expected %d connect, got %d", 1, count)
+			}
+		})
+	}
 }
