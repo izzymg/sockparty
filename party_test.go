@@ -18,8 +18,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/izzymg/sockparty"
-	"github.com/izzymg/sockparty/sockmessages"
-	"github.com/izzymg/sockparty/sockoptions"
 )
 
 /*
@@ -27,8 +25,8 @@ import (
 */
 
 // Default opts for testing
-func noPing() *sockoptions.Options {
-	return &sockoptions.Options{
+func noPing() *sockparty.Options {
+	return &sockparty.Options{
 		AllowCrossOrigin: true,
 		RateLimiter:      rate.NewLimiter(rate.Inf, 1),
 		PingFrequency:    0,
@@ -67,7 +65,7 @@ func tServer(handler http.Handler) func() {
 
 // Test party's serving of new users
 func TestAddUser(t *testing.T) {
-	incoming := make(chan sockmessages.Incoming)
+	incoming := make(chan sockparty.Incoming)
 	party := sockparty.NewParty("Party", incoming, noPing())
 	defer tServer(party)()
 
@@ -167,7 +165,7 @@ func makeGarbageStrings(n int) []string {
 // Creates a simple echo party server and tests it echos back correct random data.
 func TestMessageEach(t *testing.T) {
 	// Create a party to echo messages back
-	incoming := make(chan sockmessages.Incoming)
+	incoming := make(chan sockparty.Incoming)
 	party := sockparty.NewParty("Party", incoming, noPing())
 	go func() {
 		for {
@@ -177,7 +175,7 @@ func TestMessageEach(t *testing.T) {
 					panic("Incoming not ok")
 				}
 				// Echo back
-				party.SendMessage(context.Background(), &sockmessages.Outgoing{
+				party.SendMessage(context.Background(), &sockparty.Outgoing{
 					Event:   message.Event,
 					UserID:  message.UserID,
 					Payload: message.Payload,

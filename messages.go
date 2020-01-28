@@ -1,4 +1,4 @@
-package sockmessages
+package sockparty
 
 import (
 	"encoding/json"

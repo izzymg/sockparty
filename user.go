@@ -1,4 +1,4 @@
-package connection
+package sockparty
 
 import (
 	"context"
@@ -11,8 +11,6 @@ import (
 	"nhooyr.io/websocket/wsjson"
 
 	"github.com/google/uuid"
-	"github.com/izzymg/sockparty/sockmessages"
-	"github.com/izzymg/sockparty/sockoptions"
 )
 
 const (
@@ -21,7 +19,7 @@ const (
 )
 
 // NewUser creates a new user from a websocket connection. Generates it a new unique ID for lookups.
-func NewUser(incoming chan sockmessages.Incoming, connection *websocket.Conn, opts *sockoptions.Options) (*User, error) {
+func NewUser(incoming chan Incoming, connection *websocket.Conn, opts *Options) (*User, error) {
 	uid, err := uuid.NewRandom()
 	if err != nil {
 		return nil, fmt.Errorf("Failed to generate a UUID for a new user: %w", err)
@@ -38,9 +36,9 @@ func NewUser(incoming chan sockmessages.Incoming, connection *websocket.Conn, op
 type User struct {
 	ID         uuid.UUID
 	Name       string
-	opts       *sockoptions.Options
+	opts       *Options
 	connection *websocket.Conn
-	incoming   chan sockmessages.Incoming
+	incoming   chan Incoming
 }
 
 /*
@@ -77,7 +75,7 @@ func (user *User) Close(reason string) error {
 }
 
 // SendOutgoing sends a message to the user.
-func (user *User) SendOutgoing(ctx context.Context, message *sockmessages.Outgoing) error {
+func (user *User) SendOutgoing(ctx context.Context, message *Outgoing) error {
 	err := wsjson.Write(ctx, user.connection, message)
 	if err != nil {
 		return fmt.Errorf("Write JSON to user failed: %w", err)
@@ -148,10 +146,10 @@ func (user *User) handleIncoming(ctx context.Context) error {
 }
 
 // Blocks until a message comes through from the connection and reads it.
-func (user *User) read(ctx context.Context) (*sockmessages.Incoming, error) {
+func (user *User) read(ctx context.Context) (*Incoming, error) {
 
 	var payload json.RawMessage
-	im := &sockmessages.Incoming{
+	im := &Incoming{
 		UserID:  user.ID,
 		Payload: payload,
 	}

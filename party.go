@@ -8,14 +8,11 @@ import (
 	"sync"
 
 	"github.com/google/uuid"
-	"github.com/izzymg/sockparty/connection"
-	"github.com/izzymg/sockparty/sockmessages"
-	"github.com/izzymg/sockparty/sockoptions"
 	"nhooyr.io/websocket"
 )
 
 // NewParty creates a new room for users to join.
-func NewParty(name string, incoming chan sockmessages.Incoming, options *sockoptions.Options) *Party {
+func NewParty(name string, incoming chan Incoming, options *Options) *Party {
 	return &Party{
 		Name:     name,
 		opts:     options,
@@ -25,7 +22,7 @@ func NewParty(name string, incoming chan sockmessages.Incoming, options *sockopt
 		UserRemovedHandler: func(u uuid.UUID) {},
 		ErrorHandler:       func(e error) {},
 
-		connectedUsers: make(map[uuid.UUID]*connection.User),
+		connectedUsers: make(map[uuid.UUID]*User),
 	}
 }
 
@@ -35,7 +32,7 @@ type Party struct {
 	Name string
 
 	// Receive messages
-	Incoming chan sockmessages.Incoming
+	Incoming chan Incoming
 
 	// Called when an error occurs within the party.
 	ErrorHandler func(err error)
@@ -45,8 +42,8 @@ type Party struct {
 	// Called when a user has left the party. The user is already gone, messages to them will not be sent.
 	UserRemovedHandler func(userID uuid.UUID)
 
-	opts           *sockoptions.Options
-	connectedUsers map[uuid.UUID]*connection.User
+	opts           *Options
+	connectedUsers map[uuid.UUID]*User
 	mut            sync.Mutex
 }
 
@@ -66,7 +63,7 @@ func (party *Party) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	}
 
 	// Generate a new user
-	user, err := connection.NewUser(
+	user, err := NewUser(
 		party.Incoming,
 		conn,
 		party.opts,
@@ -103,7 +100,7 @@ func (party *Party) GetConnectedUserCount() int {
 }
 
 // SendMessage routes a message to the appropraite connected users.
-func (party *Party) SendMessage(ctx context.Context, message *sockmessages.Outgoing) {
+func (party *Party) SendMessage(ctx context.Context, message *Outgoing) {
 	if message.Broadcast {
 		party.broadcast(ctx, message)
 	} else {
@@ -135,7 +132,7 @@ func (party *Party) removeUser(id uuid.UUID) error {
 }
 
 // Add a user to the party's list. Dumb op.
-func (party *Party) addUser(user *connection.User) {
+func (party *Party) addUser(user *User) {
 	party.mut.Lock()
 	party.connectedUsers[user.ID] = user
 	party.mut.Unlock()
@@ -143,7 +140,7 @@ func (party *Party) addUser(user *connection.User) {
 }
 
 // Push to all users
-func (party *Party) broadcast(ctx context.Context, message *sockmessages.Outgoing) {
+func (party *Party) broadcast(ctx context.Context, message *Outgoing) {
 	party.mut.Lock()
 	defer party.mut.Unlock()
 	for _, user := range party.connectedUsers {
@@ -152,7 +149,7 @@ func (party *Party) broadcast(ctx context.Context, message *sockmessages.Outgoin
 }
 
 // Push to one user
-func (party *Party) messageUser(ctx context.Context, message *sockmessages.Outgoing) {
+func (party *Party) messageUser(ctx context.Context, message *Outgoing) {
 	party.mut.Lock()
 	defer party.mut.Unlock()
 	if user, ok := party.connectedUsers[message.UserID]; ok {
