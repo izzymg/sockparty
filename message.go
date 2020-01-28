@@ -19,7 +19,7 @@ type IncomingMessage struct {
 Broadcast can be set to true to indicate the message is for all users,
 otherwise the message can be sent to a specific user ID. */
 type OutgoingMessage struct {
-	Broadcast bool
+	Broadcast bool         `json:"-"`
 	UserID    string       `json:"-"`
 	Event     MessageEvent `json:"event"`
 	Payload   interface{}  `json:"payload"`
