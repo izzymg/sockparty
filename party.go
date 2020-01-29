@@ -11,8 +11,8 @@ import (
 	"nhooyr.io/websocket"
 )
 
-// NewParty creates a new room for users to join.
-func NewParty(name string, incoming chan Incoming, options *Options) *Party {
+// New creates a new room for users to join.
+func New(name string, incoming chan Incoming, options *Options) *Party {
 	return &Party{
 		Name:     name,
 		opts:     options,
@@ -22,7 +22,7 @@ func NewParty(name string, incoming chan Incoming, options *Options) *Party {
 		UserRemovedHandler: func(u uuid.UUID) {},
 		ErrorHandler:       func(e error) {},
 
-		connectedUsers: make(map[uuid.UUID]*User),
+		connectedUsers: make(map[uuid.UUID]*user),
 	}
 }
 
@@ -43,7 +43,7 @@ type Party struct {
 	UserRemovedHandler func(userID uuid.UUID)
 
 	opts           *Options
-	connectedUsers map[uuid.UUID]*User
+	connectedUsers map[uuid.UUID]*user
 	mut            sync.Mutex
 }
 
@@ -62,8 +62,9 @@ func (party *Party) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	// Generate a new user
-	user, err := newUser(
+	/* Party's incoming channel is passed to new users, so all incoming data
+	is funnelled back to the consumer. */
+	usr, err := newUser(
 		party.Incoming,
 		conn,
 		party.opts,
@@ -76,17 +77,17 @@ func (party *Party) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	}
 
 	// Add the user and begin processing
-	party.addUser(user)
-	userClosed := make(chan error)
-	go user.Listen(req.Context(), userClosed)
+	party.addUser(usr)
+	closed := make(chan error)
+	go usr.listen(req.Context(), closed)
 	for {
 		select {
-		case err := <-userClosed:
+		case err := <-closed:
 			// User listen closed
 			if err != nil {
 				go party.ErrorHandler(err)
 			}
-			party.removeUser(user.ID)
+			party.removeUser(usr.ID)
 			return
 		}
 	}
@@ -113,7 +114,7 @@ func (party *Party) End() {
 	party.mut.Lock()
 	defer party.mut.Unlock()
 	for _, user := range party.connectedUsers {
-		user.Close("Party ending.")
+		user.close("Party ending.")
 		delete(party.connectedUsers, user.ID)
 	}
 }
@@ -132,19 +133,19 @@ func (party *Party) removeUser(id uuid.UUID) error {
 }
 
 // Add a user to the party's list. Dumb op.
-func (party *Party) addUser(user *User) {
+func (party *Party) addUser(usr *user) {
 	party.mut.Lock()
-	party.connectedUsers[user.ID] = user
+	party.connectedUsers[usr.ID] = usr
 	party.mut.Unlock()
-	go party.UserAddedHandler(user.ID)
+	go party.UserAddedHandler(usr.ID)
 }
 
 // Push to all users
 func (party *Party) broadcast(ctx context.Context, message *Outgoing) {
 	party.mut.Lock()
 	defer party.mut.Unlock()
-	for _, user := range party.connectedUsers {
-		user.SendOutgoing(ctx, message)
+	for _, usr := range party.connectedUsers {
+		usr.write(ctx, message)
 	}
 }
 
@@ -152,7 +153,7 @@ func (party *Party) broadcast(ctx context.Context, message *Outgoing) {
 func (party *Party) messageUser(ctx context.Context, message *Outgoing) {
 	party.mut.Lock()
 	defer party.mut.Unlock()
-	if user, ok := party.connectedUsers[message.UserID]; ok {
-		user.SendOutgoing(ctx, message)
+	if usr, ok := party.connectedUsers[message.UserID]; ok {
+		usr.write(ctx, message)
 	}
 }

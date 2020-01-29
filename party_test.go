@@ -66,7 +66,7 @@ func tServer(handler http.Handler) func() {
 // Test party's serving of new users
 func TestAddUser(t *testing.T) {
 	incoming := make(chan sockparty.Incoming)
-	party := sockparty.NewParty("Party", incoming, noPing())
+	party := sockparty.New("Party", incoming, noPing())
 	defer tServer(party)()
 
 	// Generic request
@@ -166,7 +166,7 @@ func makeGarbageStrings(n int) []string {
 func TestMessageEach(t *testing.T) {
 	// Create a party to echo messages back
 	incoming := make(chan sockparty.Incoming)
-	party := sockparty.NewParty("Party", incoming, noPing())
+	party := sockparty.New("Party", incoming, noPing())
 	go func() {
 		for {
 			select {
