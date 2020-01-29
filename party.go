@@ -11,6 +11,9 @@ import (
 	"nhooyr.io/websocket"
 )
 
+// ErrNoSuchUser is returned when an invalid user is looked up.
+var ErrNoSuchUser = errors.New("No such user found by that ID")
+
 // New creates a new room for users to join.
 func New(name string, incoming chan Incoming, joined chan<- uuid.UUID, left chan<- uuid.UUID, options *Options) *Party {
 	return &Party{
@@ -114,7 +117,7 @@ func (party *Party) Message(ctx context.Context, userID uuid.UUID, message *Outg
 	if usr, ok := party.connectedUsers[userID]; ok {
 		return usr.write(ctx, message)
 	}
-	return errors.New("No such user")
+	return ErrNoSuchUser
 }
 
 // End closes all user connections and remove them from the party. Not dumb, tries to close cleanly.

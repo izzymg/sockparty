@@ -251,3 +251,48 @@ func TestMessageEach(t *testing.T) {
 	}
 
 }
+
+func TestMessage(t *testing.T) {
+	inc := make(chan sockparty.Incoming)
+	join := make(chan uuid.UUID)
+	party := sockparty.New("", inc, join, nil, noPing())
+
+	defer tServer(party)()
+
+	var id uuid.UUID
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		id = <-join
+		cancel()
+	}()
+
+	conn, _, err := websocket.Dial(context.Background(), wsAddr(), nil)
+	defer conn.Close(websocket.StatusNormalClosure, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Wait for join to give user ID
+	<-ctx.Done()
+
+	ctx = conn.CloseRead(context.Background())
+	err = party.Message(ctx, id, &sockparty.Outgoing{
+		Event:   "test",
+		Payload: "Payload",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Wait for closeread to get message
+	<-ctx.Done()
+}
+
+func TestNoSuchUser(t *testing.T) {
+	party := sockparty.New("", nil, nil, nil, noPing())
+	err := party.Message(context.Background(), uuid.New(), &sockparty.Outgoing{})
+	if err != sockparty.ErrNoSuchUser {
+		t.Fatalf("Expected no such user, got: %v", err)
+	}
+}
