@@ -65,8 +65,12 @@ func tServer(handler http.Handler) func() {
 
 // Test party's serving of new users
 func TestAddUser(t *testing.T) {
+
 	incoming := make(chan sockparty.Incoming)
-	party := sockparty.New("Party", incoming, noPing())
+	join := make(chan uuid.UUID)
+	leave := make(chan uuid.UUID)
+	party := sockparty.New("Party", incoming, join, leave, noPing())
+
 	defer tServer(party)()
 
 	// Generic request
@@ -90,13 +94,14 @@ func TestAddUser(t *testing.T) {
 		// Proper WS request
 		t.Run("OK", func(t *testing.T) {
 
-			// User added handler should be invoked after dial.
+			// User added channel should be sent to after dial.
 			count := 0
 			ctx, cancel := context.WithCancel(context.Background())
-			party.UserAddedHandler = func(userID uuid.UUID) {
+			go func() {
+				<-join
 				count++
 				cancel()
-			}
+			}()
 
 			// Perform dial, want successful connection
 			conn, _, err := websocket.Dial(ctx, wsAddr(), nil)
@@ -112,9 +117,10 @@ func TestAddUser(t *testing.T) {
 
 			// User removed should be invoked after close.
 			ctx, cancel = context.WithCancel(context.Background())
-			party.UserRemovedHandler = func(userID uuid.UUID) {
+			go func() {
+				<-leave
 				cancel()
-			}
+			}()
 			// Perform close, want success
 			err = conn.Close(websocket.StatusNormalClosure, "")
 			if err != nil {
@@ -166,7 +172,7 @@ func makeGarbageStrings(n int) []string {
 func TestMessageEach(t *testing.T) {
 	// Create a party to echo messages back
 	incoming := make(chan sockparty.Incoming)
-	party := sockparty.New("Party", incoming, noPing())
+	party := sockparty.New("Party", incoming, nil, nil, noPing())
 	go func() {
 		for {
 			select {

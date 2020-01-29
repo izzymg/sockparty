@@ -12,16 +12,16 @@ import (
 )
 
 // New creates a new room for users to join.
-func New(name string, incoming chan Incoming, options *Options) *Party {
+func New(name string, incoming chan Incoming, joined chan<- uuid.UUID, left chan<- uuid.UUID, options *Options) *Party {
 	return &Party{
 		Name:     name,
-		opts:     options,
 		Incoming: incoming,
+		Joined:   joined,
+		Left:     left,
 
-		UserAddedHandler:   func(u uuid.UUID) {},
-		UserRemovedHandler: func(u uuid.UUID) {},
-		ErrorHandler:       func(e error) {},
+		ErrorHandler: func(e error) {},
 
+		opts:           options,
 		connectedUsers: make(map[uuid.UUID]*user),
 	}
 }
@@ -33,14 +33,11 @@ type Party struct {
 
 	// Receive messages
 	Incoming chan Incoming
+	Joined   chan<- uuid.UUID
+	Left     chan<- uuid.UUID
 
 	// Called when an error occurs within the party.
 	ErrorHandler func(err error)
-
-	// Called when a user joins the party.
-	UserAddedHandler func(userID uuid.UUID)
-	// Called when a user has left the party. The user is already gone, messages to them will not be sent.
-	UserRemovedHandler func(userID uuid.UUID)
 
 	opts           *Options
 	connectedUsers map[uuid.UUID]*user
@@ -71,7 +68,7 @@ func (party *Party) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	)
 
 	if err != nil {
-		go party.ErrorHandler(fmt.Errorf("Failed to create new user: %v", err))
+		party.ErrorHandler(fmt.Errorf("Failed to create new user: %v", err))
 		conn.Close(websocket.StatusInternalError, "User creation failure.")
 		return
 	}
@@ -122,22 +119,21 @@ func (party *Party) End() {
 // Removethe user from the party's list. Dumb op.
 func (party *Party) removeUser(id uuid.UUID) error {
 	party.mut.Lock()
+	defer party.mut.Unlock()
 	if user, ok := party.connectedUsers[id]; ok {
 		delete(party.connectedUsers, user.ID)
-		party.mut.Unlock()
-		go party.UserRemovedHandler(user.ID)
+		party.userEvent(false, id)
 		return nil
 	}
-	party.mut.Unlock()
 	return errors.New("No such user")
 }
 
 // Add a user to the party's list. Dumb op.
 func (party *Party) addUser(usr *user) {
 	party.mut.Lock()
+	defer party.mut.Unlock()
 	party.connectedUsers[usr.ID] = usr
-	party.mut.Unlock()
-	go party.UserAddedHandler(usr.ID)
+	party.userEvent(true, usr.ID)
 }
 
 // Push to all users
@@ -155,5 +151,17 @@ func (party *Party) messageUser(ctx context.Context, message *Outgoing) {
 	defer party.mut.Unlock()
 	if usr, ok := party.connectedUsers[message.UserID]; ok {
 		usr.write(ctx, message)
+	}
+}
+
+// Send to user join/leave channels without blocking
+func (party *Party) userEvent(join bool, id uuid.UUID) {
+	c := party.Joined
+	if !join {
+		c = party.Left
+	}
+	select {
+	case c <- id:
+	default:
 	}
 }

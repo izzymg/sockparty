@@ -24,37 +24,34 @@ func main() {
 
 	/* Setup a new party. All incoming messages from party users
 	will be passed through the incoming channels. */
-	partyIncoming := make(chan sockparty.Incoming)
-	party := sockparty.NewParty("Party", partyIncoming, sockparty.DefaultOptions())
-
-	// Broadcast users joining.
-	party.UserAddedHandler = func(userID uuid.UUID) {
-		fmt.Printf("User %s joined the party\n", userID)
-		party.SendMessage(context.TODO(), &sockparty.Outgoing{
-			Broadcast: true,
-			Payload: chatMessage{
-				Body: fmt.Sprintf("User %s joined the party", userID),
-			},
-		})
-		fmt.Println("Sent")
-	}
-
-	// Broadcast users leaving.
-	party.UserRemovedHandler = func(userID uuid.UUID) {
-		fmt.Printf("User %s left the party\n", userID)
-		party.SendMessage(context.TODO(), &sockparty.Outgoing{
-			Broadcast: true,
-			Payload: chatMessage{
-				Body: fmt.Sprintf("User %s left the party", userID),
-			},
-		})
-	}
+	incoming := make(chan sockparty.Incoming)
+	joins := make(chan uuid.UUID)
+	leaves := make(chan uuid.UUID)
+	party := sockparty.New("Party", incoming, joins, leaves, sockparty.DefaultOptions())
 
 	/* Simple chat, take each message, validate it, and broadcast it back out. */
 	go func() {
 		for {
 			select {
-			case message := <-partyIncoming:
+			case id := <-joins:
+				// Broadcast user joining
+				fmt.Printf("User %s joined the party\n", id)
+				party.SendMessage(context.TODO(), &sockparty.Outgoing{
+					Broadcast: true,
+					Payload: chatMessage{
+						Body: fmt.Sprintf("User %s joined the party", id),
+					},
+				})
+			case id := <-leaves:
+				// Broadcast user leaving
+				fmt.Printf("User %s left the party\n", id)
+				party.SendMessage(context.TODO(), &sockparty.Outgoing{
+					Broadcast: true,
+					Payload: chatMessage{
+						Body: fmt.Sprintf("User %s left the party", id),
+					},
+				})
+			case message := <-incoming:
 				// Check message type
 				if message.Event != "chat_message" {
 					continue
@@ -91,7 +88,7 @@ func main() {
 		Handler: party,
 	}
 
-	// Cleanly close party
+	// Cleanly close party, attempting to gracefully close all connections with a normal status.
 	go func() {
 		<-time.After(time.Minute)
 		party.End()

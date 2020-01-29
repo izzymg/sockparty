@@ -28,7 +28,7 @@ Submit a PR~
 
 
 ### TODO:
+* Custom close messages
+* Configurable ID generation interface (don't depend on uuid)
 * Max context timeouts
-* Channel based add/remove callbacks
 * Further tests/benchmarks
-* Restructure package layout
