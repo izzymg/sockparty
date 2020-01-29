@@ -181,9 +181,8 @@ func TestMessageEach(t *testing.T) {
 					panic("Incoming not ok")
 				}
 				// Echo back
-				party.SendMessage(context.Background(), &sockparty.Outgoing{
+				party.Message(context.Background(), message.UserID, &sockparty.Outgoing{
 					Event:   message.Event,
-					UserID:  message.UserID,
 					Payload: message.Payload,
 				})
 			}

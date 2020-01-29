@@ -9,7 +9,11 @@ import (
 // Event is a string representing a message's event type.
 type Event string
 
-// Incoming represents a socket message from a user, destined to the server.
+/*
+Incoming represents a socket message from a user, destined to the server.
+The UserID is the user who sent the message to the server.
+The payload is raw JSON containing arbitrary information from the client.
+*/
 type Incoming struct {
 	Event   Event           `json:"event"`
 	UserID  uuid.UUID       `json:"-"`
@@ -18,12 +22,10 @@ type Incoming struct {
 
 /*
 Outgoing represents a message destined from the server to users.
-Broadcast can be set to true to indicate the message is for all users,
-otherwise the message can be sent to a specific user ID.
+It contains an event to inform the client of the type of message,
+and the payload containing the actual message data of any type.
 */
 type Outgoing struct {
-	Broadcast bool        `json:"-"`
-	UserID    uuid.UUID   `json:"-"`
-	Event     Event       `json:"event"`
-	Payload   interface{} `json:"payload"`
+	Event   Event       `json:"event"`
+	Payload interface{} `json:"payload"`
 }

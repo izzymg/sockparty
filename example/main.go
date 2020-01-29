@@ -36,8 +36,7 @@ func main() {
 			case id := <-joins:
 				// Broadcast user joining
 				fmt.Printf("User %s joined the party\n", id)
-				party.SendMessage(context.TODO(), &sockparty.Outgoing{
-					Broadcast: true,
+				party.Broadcast(context.TODO(), &sockparty.Outgoing{
 					Payload: chatMessage{
 						Body: fmt.Sprintf("User %s joined the party", id),
 					},
@@ -45,8 +44,7 @@ func main() {
 			case id := <-leaves:
 				// Broadcast user leaving
 				fmt.Printf("User %s left the party\n", id)
-				party.SendMessage(context.TODO(), &sockparty.Outgoing{
-					Broadcast: true,
+				party.Broadcast(context.TODO(), &sockparty.Outgoing{
 					Payload: chatMessage{
 						Body: fmt.Sprintf("User %s left the party", id),
 					},
@@ -61,17 +59,15 @@ func main() {
 				err := json.Unmarshal(message.Payload, parsedMessage)
 				if err != nil {
 					// Send invalid payload error
-					party.SendMessage(context.TODO(), &sockparty.Outgoing{
-						UserID:  message.UserID,
+					party.Message(context.TODO(), message.UserID, &sockparty.Outgoing{
 						Event:   "error",
 						Payload: "Invalid JSON",
 					})
 				}
 
 				// Broadcast the data back out to users.
-				party.SendMessage(context.TODO(), &sockparty.Outgoing{
-					Broadcast: true,
-					Event:     "chat_message",
+				party.Broadcast(context.TODO(), &sockparty.Outgoing{
+					Event: "chat_message",
 					Payload: chatMessage{
 						Body: html.EscapeString(parsedMessage.Body),
 					},

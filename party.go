@@ -97,13 +97,24 @@ func (party *Party) GetConnectedUserCount() int {
 	return len(party.connectedUsers)
 }
 
-// SendMessage routes a message to the appropraite connected users.
-func (party *Party) SendMessage(ctx context.Context, message *Outgoing) {
-	if message.Broadcast {
-		party.broadcast(ctx, message)
-	} else {
-		party.messageUser(ctx, message)
+// Broadcast writes a single outgoing message to all users currently active in the party.
+func (party *Party) Broadcast(ctx context.Context, message *Outgoing) error {
+	party.mut.Lock()
+	defer party.mut.Unlock()
+	for _, usr := range party.connectedUsers {
+		usr.write(ctx, message)
 	}
+	return nil
+}
+
+// Message writes a single outgoing message to a user by their ID.
+func (party *Party) Message(ctx context.Context, userID uuid.UUID, message *Outgoing) error {
+	party.mut.Lock()
+	defer party.mut.Unlock()
+	if usr, ok := party.connectedUsers[userID]; ok {
+		return usr.write(ctx, message)
+	}
+	return errors.New("No such user")
 }
 
 // End closes all user connections and remove them from the party. Not dumb, tries to close cleanly.
@@ -134,24 +145,6 @@ func (party *Party) addUser(usr *user) {
 	defer party.mut.Unlock()
 	party.connectedUsers[usr.ID] = usr
 	party.userEvent(true, usr.ID)
-}
-
-// Push to all users
-func (party *Party) broadcast(ctx context.Context, message *Outgoing) {
-	party.mut.Lock()
-	defer party.mut.Unlock()
-	for _, usr := range party.connectedUsers {
-		usr.write(ctx, message)
-	}
-}
-
-// Push to one user
-func (party *Party) messageUser(ctx context.Context, message *Outgoing) {
-	party.mut.Lock()
-	defer party.mut.Unlock()
-	if usr, ok := party.connectedUsers[message.UserID]; ok {
-		usr.write(ctx, message)
-	}
 }
 
 // Send to user join/leave channels without blocking
