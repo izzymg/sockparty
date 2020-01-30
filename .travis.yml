@@ -2,11 +2,15 @@ language: go
 
 go:
     - 1.13.6
+    - tip
 
 install:
     - go mod download
 
 script:
-    - go test -v -cover -timeout=30s -coverprofile=ci/out/cover .
+    - go test -race -v -timeout=30s -covermode=atomic -coverprofile=ci/out/cover.out .
+
+after_success:
+    - bash <(curl -s https://codecov.io/bash) -f ci/out/cover.out
 
 go_import_path: github.com/izzymg/sockparty
