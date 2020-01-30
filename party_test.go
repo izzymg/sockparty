@@ -4,64 +4,18 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
-	"math/rand"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
-	"time"
 
+	"nhooyr.io/websocket/wsjson"
+
+	"golang.org/x/sync/errgroup"
 	"nhooyr.io/websocket"
-
-	"golang.org/x/time/rate"
 
 	"github.com/google/uuid"
 	"github.com/izzymg/sockparty"
 )
-
-/*
-	Add users
-*/
-
-// Default opts for testing
-func noPing() *sockparty.Options {
-	return &sockparty.Options{
-		AllowCrossOrigin: true,
-		RateLimiter:      rate.NewLimiter(rate.Inf, 1),
-		PingFrequency:    0,
-		PingTimeout:      0,
-	}
-}
-
-// Returns an address to use for testing, with no protocol
-func getAddr() string {
-	if addr, ok := os.LookupEnv("TEST_ADDR"); ok {
-		return addr
-	}
-	return "localhost:3000"
-}
-
-func wsAddr() string {
-	return fmt.Sprintf("ws://%s", getAddr())
-}
-
-// Creates an HTTP server for testing, returns cleanup function.
-func tServer(handler http.Handler) func() {
-	server := http.Server{
-		Addr:    getAddr(),
-		Handler: handler,
-	}
-
-	go func() {
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			panic(err)
-		}
-	}()
-	return func() {
-		server.Shutdown(context.Background())
-	}
-}
 
 // Test party's serving of new users
 func TestAddUser(t *testing.T) {
@@ -69,9 +23,7 @@ func TestAddUser(t *testing.T) {
 	incoming := make(chan sockparty.Incoming)
 	join := make(chan uuid.UUID)
 	leave := make(chan uuid.UUID)
-	party := sockparty.New("Party", incoming, join, leave, noPing())
-
-	defer tServer(party)()
+	party, cleanup := testPServer(incoming, join, leave, noPing())
 
 	// Generic request
 	t.Run("Fail", func(t *testing.T) {
@@ -90,7 +42,7 @@ func TestAddUser(t *testing.T) {
 		}
 	})
 
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 4; i++ {
 		// Proper WS request
 		t.Run("OK", func(t *testing.T) {
 
@@ -103,13 +55,8 @@ func TestAddUser(t *testing.T) {
 				cancel()
 			}()
 
-			// Perform dial, want successful connection
-			conn, _, err := websocket.Dial(ctx, wsAddr(), nil)
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			// Wait for user added handler to finish, should be 1 user
+			// Dial, should be one connection
+			_, cleanupConns := makeConns(1)
 			<-ctx.Done()
 			if count != 1 {
 				t.Fatalf("Expected %d connected, got %d", 1, count)
@@ -121,12 +68,9 @@ func TestAddUser(t *testing.T) {
 				<-leave
 				cancel()
 			}()
-			// Perform close, want success
-			err = conn.Close(websocket.StatusNormalClosure, "")
-			if err != nil {
-				t.Fatal(err)
-			}
+
 			// Wait for user removed handler to finish, should be zero users.
+			cleanupConns()
 			<-ctx.Done()
 			c := party.GetConnectedUserCount()
 			if c != 0 {
@@ -139,43 +83,20 @@ func TestAddUser(t *testing.T) {
 	if count := party.GetConnectedUserCount(); count != 0 {
 		t.Fatalf("Expected %d connected, got %d", 0, count)
 	}
-}
-
-// Make n conns, return cleanup
-func makeConns(n int) ([]*websocket.Conn, func()) {
-	var conns []*websocket.Conn
-	for i := 0; i < n; i++ {
-		conn, _, err := websocket.Dial(context.Background(), wsAddr(), nil)
-		if err != nil {
-			panic(err)
-		}
-		conns = append(conns, conn)
-	}
-
-	return conns, func() {
-		for _, conn := range conns {
-			conn.Close(websocket.StatusNormalClosure, "Exit")
-		}
-	}
-}
-
-func makeGarbageStrings(n int) []string {
-	rand.Seed(time.Now().UnixNano())
-	var ret []string
-	for i := 0; i < n; i++ {
-		ret = append(ret, fmt.Sprintf("%x", rand.Intn(600)))
-	}
-	return ret
+	cleanup()
 }
 
 // Creates a simple echo party server and tests it echos back correct random data.
 func TestMessageEach(t *testing.T) {
 	// Create a party to echo messages back
 	incoming := make(chan sockparty.Incoming)
-	party := sockparty.New("Party", incoming, nil, nil, noPing())
+	party, cleanup := testPServer(incoming, nil, nil, noPing())
+	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
 		for {
 			select {
+			case <-ctx.Done():
+				cleanup()
 			case message, ok := <-incoming:
 				if !ok {
 					panic("Incoming not ok")
@@ -189,24 +110,18 @@ func TestMessageEach(t *testing.T) {
 		}
 	}()
 
-	defer tServer(party)()
-
-	type msgType struct {
-		Event   string      `json:"event"`
-		Payload interface{} `json:"payload"`
-	}
+	closeReason := "Exiting"
+	messageEvent := sockparty.Event("echo")
 
 	numConns := 10
-	closeReason := "Exiting"
-	ev := "echo"
 	conns, _ := makeConns(numConns)
-	//defer cleanup()
 	payloads := makeGarbageStrings(numConns)
 
 	for index, conn := range conns {
 		recv := make(chan []byte)
+
 		// Start reading any messages coming in
-		go func() {
+		go func(c *websocket.Conn) {
 			_, data, err := conn.Read(context.Background())
 			var ce websocket.CloseError
 			if err != nil {
@@ -218,11 +133,11 @@ func TestMessageEach(t *testing.T) {
 				panic(err)
 			}
 			recv <- data
-		}()
+		}(conn)
 
-		// Write message out
-		marshalled, err := json.Marshal(&msgType{
-			Event:   ev,
+		/* Write message from client to the party */
+		marshalled, err := json.Marshal(&testMessage{
+			Event:   string(messageEvent),
 			Payload: payloads[index],
 		})
 		if err != nil {
@@ -233,54 +148,47 @@ func TestMessageEach(t *testing.T) {
 			panic(err)
 		}
 
-		// Expect it echoed bacl
+		/* Expect to have it returned and echoed back */
 		data := <-recv
-		unmarshalled := &msgType{}
-		err = json.Unmarshal(data, unmarshalled)
+		tm, err := newTestMessage(data)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		if unmarshalled.Event != ev {
-			t.Fatalf("Expected event %s, got %s", ev, unmarshalled.Event)
-		}
-
-		if unmarshalled.Payload != payloads[index] {
-			t.Fatalf("Expected payload %s, got %s", payloads[index], unmarshalled.Payload)
+		err = tm.equalToOutgoing(sockparty.Outgoing{messageEvent, payloads[index]})
+		if err != nil {
+			t.Fatal(err)
 		}
 	}
 
+	cancel() // Cleanup goroutine
 }
 
 func TestMessage(t *testing.T) {
+	message := &sockparty.Outgoing{
+		Event:   "ferret",
+		Payload: "weasel",
+	}
 	inc := make(chan sockparty.Incoming)
 	join := make(chan uuid.UUID)
-	party := sockparty.New("", inc, join, nil, noPing())
-
-	defer tServer(party)()
+	party, cleanup := testPServer(inc, join, nil, noPing())
+	defer cleanup()
 
 	var id uuid.UUID
-
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
 		id = <-join
 		cancel()
 	}()
 
-	conn, _, err := websocket.Dial(context.Background(), wsAddr(), nil)
-	defer conn.Close(websocket.StatusNormalClosure, "")
-	if err != nil {
-		t.Fatal(err)
-	}
+	conns, cleanup := makeConns(1)
+	defer cleanup()
 
 	// Wait for join to give user ID
 	<-ctx.Done()
 
-	ctx = conn.CloseRead(context.Background())
-	err = party.Message(ctx, id, &sockparty.Outgoing{
-		Event:   "test",
-		Payload: "Payload",
-	})
+	ctx = conns[0].CloseRead(context.Background())
+	err := party.Message(ctx, id, message)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -289,10 +197,53 @@ func TestMessage(t *testing.T) {
 	<-ctx.Done()
 }
 
+// Test messaging to an invalid user returns an error
 func TestNoSuchUser(t *testing.T) {
 	party := sockparty.New("", nil, nil, nil, noPing())
 	err := party.Message(context.Background(), uuid.New(), &sockparty.Outgoing{})
 	if err != sockparty.ErrNoSuchUser {
 		t.Fatalf("Expected no such user, got: %v", err)
+	}
+}
+
+// Test messaging to all users
+func TestBroadcast(t *testing.T) {
+	message := &sockparty.Outgoing{
+		Event:   "cat",
+		Payload: "{ ferret }",
+	}
+
+	party, cleanup := testPServer(nil, nil, nil, noPing())
+	defer cleanup()
+
+	// Open n connections
+	conns, cleanup := makeConns(10)
+	defer cleanup()
+
+	// Wait for them to read in broadcast data
+	var g errgroup.Group
+
+	for _, conn := range conns {
+		c := conn // Prevent closure race
+		g.Go(func() error {
+			recv := &testMessage{}
+			err := wsjson.Read(context.Background(), c, recv)
+			if err != nil {
+				return err
+			}
+			if err := recv.equalToOutgoing(*message); err != nil {
+				return err
+			}
+			return nil
+		})
+	}
+
+	err := party.Broadcast(context.Background(), message)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := g.Wait(); err != nil {
+		t.Fatal(err)
 	}
 }
