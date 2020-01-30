@@ -5,8 +5,7 @@ branches:
         - master
 
 go:
-    - 1.13.6
-    - tip
+    - 1.13.7
 
 install:
     - go mod download
