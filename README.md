@@ -1,14 +1,13 @@
 # SockParty 💬
+[![Build status](https://api.travis-ci.org/izzymg/sockparty.svg?branch=dev)](https://github.com/izzymg/releases)
 
 SockParty is a WebSocket room manager for Golang. Allows creation of rooms, which manage WebSocket connections and an API to communicate with them.
 
 It is currently in development, and may undergo breaking API changes.
 
-##### `go get github.com/izzymg/sockparty`
+# Install
 
-## Built With
-
-* [nhooyr/websocket](https://github.com/nhooyr/websocket)
+`go get github.com/izzymg/sockparty`
 
 ## About
 
@@ -22,6 +21,10 @@ On usescases, sockparty was built to provide a higher-level API for a WebSocket 
 
 See [full chat room example](/example) package
 
+## Built With
+
+* [nhooyr/websocket](https://github.com/nhooyr/websocket)
+
 ## Contributing
 
 Submit a PR~
@@ -31,4 +34,3 @@ Submit a PR~
 * Custom close messages
 * Configurable ID generation interface (don't depend on uuid)
 * Max context timeouts
-* Further tests/benchmarks
