@@ -91,12 +91,13 @@ func TestMessageEach(t *testing.T) {
 	// Create a party to echo messages back
 	incoming := make(chan sockparty.Incoming)
 	party, cleanup := testPServer(incoming, nil, nil, noPing())
+	defer cleanup()
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
 		for {
 			select {
 			case <-ctx.Done():
-				cleanup()
+				return
 			case message, ok := <-incoming:
 				if !ok {
 					panic("Incoming not ok")
@@ -114,7 +115,8 @@ func TestMessageEach(t *testing.T) {
 	messageEvent := sockparty.Event("echo")
 
 	numConns := 10
-	conns, _ := makeConns(numConns)
+	conns, cleanup := makeConns(numConns)
+	defer cleanup()
 	payloads := makeGarbageStrings(numConns)
 
 	for index, conn := range conns {
@@ -122,7 +124,7 @@ func TestMessageEach(t *testing.T) {
 
 		// Start reading any messages coming in
 		go func(c *websocket.Conn) {
-			_, data, err := conn.Read(context.Background())
+			_, data, err := c.Read(context.Background())
 			var ce websocket.CloseError
 			if err != nil {
 				// Expected close message with correct reason.
@@ -160,8 +162,7 @@ func TestMessageEach(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-
-	cancel() // Cleanup goroutine
+	cancel()
 }
 
 func TestMessage(t *testing.T) {

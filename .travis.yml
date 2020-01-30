@@ -1,6 +1,12 @@
 language: go
 
 go:
-    - 1.13
+    - 1.13.6
+
+install:
+    - go mod download
+
+script:
+    - go test -v -cover -timeout=30s -coverprofile=ci/out/cover .
 
 go_import_path: github.com/izzymg/sockparty
