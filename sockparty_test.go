@@ -83,23 +83,6 @@ func testPServer(inc chan sockparty.Incoming, join chan<- uuid.UUID, leave chan<
 	}
 }
 
-// Creates a new party & connects an HTTP server for testing, returns cleanup function.
-func testServer(hand http.Handler) func() {
-	server := http.Server{
-		Addr:    getAddr(),
-		Handler: hand,
-	}
-
-	go func() {
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			panic(err)
-		}
-	}()
-	return func() {
-		server.Shutdown(context.Background())
-	}
-}
-
 // Make n conns, return cleanup
 func makeConns(n int) ([]*websocket.Conn, func()) {
 	var conns []*websocket.Conn
