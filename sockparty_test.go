@@ -5,11 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/rand"
-	"net/http"
 	"os"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/izzymg/sockparty"
 	"golang.org/x/time/rate"
 	"nhooyr.io/websocket"
@@ -62,25 +60,6 @@ func getAddr() string {
 
 func wsAddr() string {
 	return fmt.Sprintf("ws://%s", getAddr())
-}
-
-// Creates a new party & connects an HTTP server for testing, returns cleanup function.
-func testPServer(inc chan sockparty.Incoming, join chan<- uuid.UUID, leave chan<- uuid.UUID, options *sockparty.Options) (*sockparty.Party, func()) {
-	party := sockparty.New("", inc, join, leave, options)
-	server := http.Server{
-		Addr:    getAddr(),
-		Handler: party,
-	}
-
-	go func() {
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			panic(err)
-		}
-	}()
-	return party, func() {
-		server.Shutdown(context.Background())
-		party.End()
-	}
 }
 
 // Make n conns, return cleanup
