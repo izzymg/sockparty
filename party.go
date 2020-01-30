@@ -139,7 +139,7 @@ func (party *Party) removeUser(id uuid.UUID) error {
 		party.userEvent(false, id)
 		return nil
 	}
-	return errors.New("No such user")
+	return ErrNoSuchUser
 }
 
 // Add a user to the party's list. Dumb op.
