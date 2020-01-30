@@ -9,7 +9,7 @@ import (
 // DefaultOptions generates party options with defaults. Use if you're just testing.
 func DefaultOptions() *Options {
 	return &Options{
-		AllowCrossOrigin: true,
+		AllowCrossOrigin: false,
 		RateLimiter:      rate.NewLimiter(rate.Every(time.Millisecond*100), 5),
 		PingFrequency:    time.Second * 15,
 		PingTimeout:      time.Second * 10,

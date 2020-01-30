@@ -217,7 +217,7 @@ func GenBroadcast() (http.Handler, func(t *testing.T)) {
 		}
 
 		// Open n connections
-		conns, cleanup := makeConns(10)
+		conns, cleanup := makeConns(3)
 		defer cleanup()
 
 		// Wait for them to read in broadcast data
