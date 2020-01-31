@@ -170,8 +170,38 @@ func GenEchoServer() (http.Handler, func(t *testing.T)) {
 	}
 }
 
+func GenEndParty() (http.Handler, func(t *testing.T)) {
+	party := sockparty.New("", nil, nil, nil, noPing())
+
+	return party, func(t *testing.T) {
+
+		endMsg := "Goodbye!"
+
+		conns, cleanup := makeConns(2)
+		defer cleanup()
+
+		party.End(endMsg)
+
+		for _, conn := range conns {
+			_, _, err := conn.Read(context.TODO())
+			var ce websocket.CloseError
+
+			if err == nil {
+				t.Fatalf("Expected error, got %v", err)
+			}
+
+			if !errors.As(err, &ce) {
+				t.Fatalf("Expected close error, got %v", err)
+			}
+			if ce.Reason != endMsg {
+				t.Fatalf("Expected reason %s to equal %s", ce.Reason, endMsg)
+			}
+		}
+	}
+}
+
 // Test messaging a single user from the party.
-func GenTestMessage() (http.Handler, func(t *testing.T)) {
+func GenMessageUser() (http.Handler, func(t *testing.T)) {
 	inc := make(chan sockparty.Incoming)
 	join := make(chan uuid.UUID)
 	party := sockparty.New("", inc, join, nil, noPing())
@@ -276,7 +306,8 @@ func TestEndToEnds(t *testing.T) {
 	// Map tests to their generator functions and run them
 	var tests = map[string]testGenerator{
 		"Add User":          GenAddUser,
-		"Message user":      GenTestMessage,
+		"End party":         GenEndParty,
+		"Message user":      GenMessageUser,
 		"Broadcast message": GenBroadcast,
 		"Echo server":       GenEchoServer,
 	}

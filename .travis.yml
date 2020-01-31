@@ -3,6 +3,7 @@ language: go
 branches:
     only:
         - master
+        - dev
 
 go:
     - 1.13.7

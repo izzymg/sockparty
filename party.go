@@ -120,12 +120,15 @@ func (party *Party) Message(ctx context.Context, userID uuid.UUID, message *Outg
 	return ErrNoSuchUser
 }
 
-// End closes all user connections and remove them from the party. Not dumb, tries to close cleanly.
-func (party *Party) End() {
+/*
+End attempts to remove all users from the party, closing the underlying socket connections
+with a message.
+*/
+func (party *Party) End(message string) {
 	party.mut.Lock()
 	defer party.mut.Unlock()
 	for _, user := range party.connectedUsers {
-		user.close("Party ending.")
+		user.close(message)
 		delete(party.connectedUsers, user.ID)
 	}
 }

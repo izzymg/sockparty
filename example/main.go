@@ -87,7 +87,7 @@ func main() {
 	// Cleanly close party, attempting to gracefully close all connections with a normal status.
 	go func() {
 		<-time.After(time.Minute)
-		party.End()
+		party.End("Party's over folks")
 	}()
 	fmt.Println(server.ListenAndServe())
 }
