@@ -44,7 +44,7 @@ type Party struct {
 
 	opts           *Options
 	connectedUsers map[uuid.UUID]*user
-	mut            sync.Mutex
+	mut            sync.RWMutex
 }
 
 /*
@@ -95,15 +95,15 @@ func (party *Party) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 
 // GetConnectedUserCount returns the number of currently connected users.
 func (party *Party) GetConnectedUserCount() int {
-	party.mut.Lock()
-	defer party.mut.Unlock()
+	party.mut.RLock()
+	defer party.mut.RUnlock()
 	return len(party.connectedUsers)
 }
 
 // Broadcast writes a single outgoing message to all users currently active in the party.
 func (party *Party) Broadcast(ctx context.Context, message *Outgoing) error {
-	party.mut.Lock()
-	defer party.mut.Unlock()
+	party.mut.RLock()
+	defer party.mut.RUnlock()
 	for _, usr := range party.connectedUsers {
 		usr.write(ctx, message)
 	}
@@ -112,8 +112,8 @@ func (party *Party) Broadcast(ctx context.Context, message *Outgoing) error {
 
 // Message writes a single outgoing message to a user by their ID.
 func (party *Party) Message(ctx context.Context, userID uuid.UUID, message *Outgoing) error {
-	party.mut.Lock()
-	defer party.mut.Unlock()
+	party.mut.RLock()
+	defer party.mut.RUnlock()
 	if usr, ok := party.connectedUsers[userID]; ok {
 		return usr.write(ctx, message)
 	}
