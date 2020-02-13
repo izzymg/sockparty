@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/izzymg/sockparty"
 )
 
@@ -25,8 +24,8 @@ func main() {
 	/* Setup a new party. All incoming messages from party users
 	will be passed through the incoming channels. */
 	incoming := make(chan sockparty.Incoming)
-	joins := make(chan uuid.UUID)
-	leaves := make(chan uuid.UUID)
+	joins := make(chan string)
+	leaves := make(chan string)
 	party := sockparty.New("Party", incoming, joins, leaves, sockparty.DefaultOptions())
 
 	/* Simple chat, take each message, validate it, and broadcast it back out. */

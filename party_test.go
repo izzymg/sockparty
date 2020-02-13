@@ -13,7 +13,6 @@ import (
 	"golang.org/x/sync/errgroup"
 	"nhooyr.io/websocket"
 
-	"github.com/google/uuid"
 	"github.com/izzymg/sockparty"
 )
 
@@ -23,8 +22,8 @@ type testGenerator func() (http.Handler, func(t *testing.T))
 func GenAddUser() (http.Handler, func(t *testing.T)) {
 
 	incoming := make(chan sockparty.Incoming)
-	join := make(chan uuid.UUID)
-	leave := make(chan uuid.UUID)
+	join := make(chan string)
+	leave := make(chan string)
 	party := sockparty.New("", incoming, join, leave, noPing())
 
 	return party, func(t *testing.T) {
@@ -203,7 +202,7 @@ func GenEndParty() (http.Handler, func(t *testing.T)) {
 // Test messaging a single user from the party.
 func GenMessageUser() (http.Handler, func(t *testing.T)) {
 	inc := make(chan sockparty.Incoming)
-	join := make(chan uuid.UUID)
+	join := make(chan string)
 	party := sockparty.New("", inc, join, nil, noPing())
 
 	return party, func(t *testing.T) {
@@ -212,7 +211,7 @@ func GenMessageUser() (http.Handler, func(t *testing.T)) {
 			Payload: "weasel",
 		}
 
-		var id uuid.UUID
+		var id string
 		ctx, cancel := context.WithCancel(context.Background())
 		go func() {
 			id = <-join
@@ -322,7 +321,7 @@ func TestEndToEnds(t *testing.T) {
 // Test messaging to an invalid user returns an error
 func TestNoSuchUser(t *testing.T) {
 	party := sockparty.New("", nil, nil, nil, noPing())
-	err := party.Message(context.Background(), uuid.New(), &sockparty.Outgoing{})
+	err := party.Message(context.Background(), "nosuchuseridontexist", &sockparty.Outgoing{})
 	if err != sockparty.ErrNoSuchUser {
 		t.Fatalf("Expected no such user, got: %v", err)
 	}

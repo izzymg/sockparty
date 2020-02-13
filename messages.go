@@ -2,8 +2,6 @@ package sockparty
 
 import (
 	"encoding/json"
-
-	"github.com/google/uuid"
 )
 
 // Event is a string representing a message's event type.
@@ -16,7 +14,7 @@ The payload is raw JSON containing arbitrary information from the client.
 */
 type Incoming struct {
 	Event   Event           `json:"event"`
-	UserID  uuid.UUID       `json:"-"`
+	UserID  string          `json:"-"`
 	Payload json.RawMessage `json:"payload"`
 }
 

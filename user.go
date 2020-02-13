@@ -9,8 +9,6 @@ import (
 	"golang.org/x/time/rate"
 	"nhooyr.io/websocket"
 	"nhooyr.io/websocket/wsjson"
-
-	"github.com/google/uuid"
 )
 
 const (
@@ -19,22 +17,18 @@ const (
 )
 
 // newUser creates a new user from a websocket connection. Generates it a new unique ID for lookups.
-func newUser(incoming chan Incoming, connection *websocket.Conn, opts *Options) (*user, error) {
-	uid, err := uuid.NewRandom()
-	if err != nil {
-		return nil, fmt.Errorf("Failed to generate a UUID for a new user: %w", err)
-	}
+func newUser(id string, incoming chan Incoming, connection *websocket.Conn, opts *Options) *user {
 	return &user{
-		ID:         uid,
+		ID:         id,
 		incoming:   incoming,
 		opts:       opts,
 		connection: connection,
-	}, nil
+	}
 }
 
 // user represents a websocket connection from a client.
 type user struct {
-	ID         uuid.UUID
+	ID         string
 	Name       string
 	opts       *Options
 	connection *websocket.Conn
