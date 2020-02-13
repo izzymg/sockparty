@@ -20,14 +20,19 @@ If an error is returned, the user will be disconnected.
 */
 type UniqueIDGenerator func() (string, error)
 
+/*
+UserUpdateHandler is called to send info about a user, e.g on join or leave.
+These handlers will be called on the same thread as the connection is on,
+meaning they will block future actions. If long running work is needed from this
+callback, spawn a new goroutine.
+*/
+type UserUpdateHandler func(userID string)
+
 // New creates a new room for users to join.
-func New(uidGenerator UniqueIDGenerator, incoming chan Incoming, joined chan<- string, left chan<- string, options *Options) *Party {
+func New(uidGenerator UniqueIDGenerator, incoming chan Incoming, options *Options) *Party {
 	return &Party{
 		UIDGenerator: uidGenerator,
 		Incoming:     incoming,
-		Joined:       joined,
-		Left:         left,
-
 		ErrorHandler: func(e error) {},
 
 		opts:           options,
@@ -41,10 +46,7 @@ type Party struct {
 	Name         string
 	UIDGenerator UniqueIDGenerator
 
-	// Receive messages
 	Incoming chan Incoming
-	Joined   chan<- string
-	Left     chan<- string
 
 	// Called when an error occurs within the party.
 	ErrorHandler func(err error)
@@ -141,34 +143,31 @@ func (party *Party) End(message string) {
 	}
 }
 
+/* Write locks should be released before callbacks,
+to prevent deadlocking if callback attempts to read or write. */
+
 // Removethe user from the party's list. Dumb op.
 func (party *Party) removeUser(id string) error {
 	party.mut.Lock()
-	defer party.mut.Unlock()
 	if user, ok := party.connectedUsers[id]; ok {
 		delete(party.connectedUsers, user.ID)
-		party.userEvent(false, id)
+		party.mut.Unlock()
+		if party.opts.UserLeaveHandler != nil {
+			party.opts.UserLeaveHandler(id)
+		}
 		return nil
 	}
+	party.mut.Unlock()
 	return ErrNoSuchUser
 }
 
 // Add a user to the party's list. Dumb op.
 func (party *Party) addUser(usr *user) {
 	party.mut.Lock()
-	defer party.mut.Unlock()
 	party.connectedUsers[usr.ID] = usr
-	party.userEvent(true, usr.ID)
-}
+	party.mut.Unlock()
 
-// Send to user join/leave channels without blocking
-func (party *Party) userEvent(join bool, id string) {
-	c := party.Joined
-	if !join {
-		c = party.Left
-	}
-	select {
-	case c <- id:
-	default:
+	if party.opts.UserJoinHandler != nil {
+		party.opts.UserJoinHandler(usr.ID)
 	}
 }

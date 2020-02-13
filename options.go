@@ -18,6 +18,10 @@ func DefaultOptions() *Options {
 
 // Options configures a party's settings.
 type Options struct {
+	// Called when a user joins the party
+	UserJoinHandler UserUpdateHandler
+	// Called when a user leaves the party
+	UserLeaveHandler UserUpdateHandler
 
 	// Allow cross origin socket requests
 	AllowCrossOrigin bool
