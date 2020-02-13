@@ -4,6 +4,7 @@ package sockparty_test
 import (
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/matryer/is"
 
@@ -61,9 +62,42 @@ func TestEndToEnd(t *testing.T) {
 	for name, test := range tests {
 		incoming = make(chan sockparty.Incoming)
 		party = sockparty.New(generateUID, incoming, &sockparty.Options{
-			PingFrequency:    0,
-			AllowCrossOrigin: true,
+			PingFrequency: 0,
 		})
 		t.Run(name, test)
+	}
+}
+
+func TestJoin(t *testing.T) {
+	is := is.New(t)
+
+	// Generate a testable ID
+	bob := "bob"
+	genID := func() (string, error) {
+		return bob, nil
+	}
+
+	done := make(chan bool)
+	onJoin := func(id string) {
+		is.Equal(id, bob)
+		close(done)
+	}
+
+	incoming := make(chan sockparty.Incoming)
+	party := sockparty.New(genID, incoming, &sockparty.Options{
+		PingFrequency:   0,
+		UserJoinHandler: onJoin,
+	})
+
+	d := wstest.NewDialer(party)
+	_, _, err := d.Dial(addr, nil)
+	is.NoErr(err)
+
+	// Wait for join
+	select {
+	case <-done:
+		return
+	case <-time.After(time.Second * 3):
+		t.Fatal("Timeout waiting for user join event")
 	}
 }
