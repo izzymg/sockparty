@@ -29,9 +29,3 @@ See [full chat room example](/example) package
 ## Contributing
 
 Submit a PR~
-
-
-### TODO:
-* Custom close messages
-* Configurable ID generation interface (don't depend on uuid)
-* Max context timeouts
