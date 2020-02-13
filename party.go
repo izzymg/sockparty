@@ -13,13 +13,20 @@ import (
 // ErrNoSuchUser is returned when an invalid user is looked up.
 var ErrNoSuchUser = errors.New("No such user found by that ID")
 
+/*
+UniqueIDGenerator is a function which generates a new ID for each user join.
+Ensure it is sufficiently unique, e.g. random UUIDs or database usernames.
+If an error is returned, the user will be disconnected.
+*/
+type UniqueIDGenerator func() (string, error)
+
 // New creates a new room for users to join.
-func New(name string, incoming chan Incoming, joined chan<- string, left chan<- string, options *Options) *Party {
+func New(uidGenerator UniqueIDGenerator, incoming chan Incoming, joined chan<- string, left chan<- string, options *Options) *Party {
 	return &Party{
-		Name:     name,
-		Incoming: incoming,
-		Joined:   joined,
-		Left:     left,
+		UIDGenerator: uidGenerator,
+		Incoming:     incoming,
+		Joined:       joined,
+		Left:         left,
 
 		ErrorHandler: func(e error) {},
 
@@ -31,7 +38,8 @@ func New(name string, incoming chan Incoming, joined chan<- string, left chan<- 
 // Party represents a group of users connected in a socket session.
 type Party struct {
 	// Human readable name of the party
-	Name string
+	Name         string
+	UIDGenerator UniqueIDGenerator
 
 	// Receive messages
 	Incoming chan Incoming
@@ -57,14 +65,20 @@ func (party *Party) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		InsecureSkipVerify: party.opts.AllowCrossOrigin,
 	})
 	if err != nil {
-		party.ErrorHandler(fmt.Errorf("Failed to upgrade websocket connection: %v", err))
+		party.ErrorHandler(fmt.Errorf("failed to upgrade websocket connection: %v", err))
 		return
 	}
 
 	/* Party's incoming channel is passed to new users, so all incoming data
 	is funnelled back to the consumer. */
+	uid, err := party.UIDGenerator()
+	if err != nil {
+		party.ErrorHandler(fmt.Errorf("failed to generate unique ID: %v", err))
+		conn.Close(websocket.StatusInternalError, "User creation failed")
+		return
+	}
 	usr := newUser(
-		"",
+		uid,
 		party.Incoming,
 		conn,
 		party.opts,

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html"
+	"math/rand"
 	"net/http"
 	"time"
 
@@ -12,6 +13,11 @@ import (
 )
 
 /* Chat room example with SockParty */
+
+func generateUID() (string, error) {
+	rand.Seed(time.Now().Unix())
+	return fmt.Sprintf("%X", rand.Uint64()), nil
+}
 
 func main() {
 
@@ -26,7 +32,7 @@ func main() {
 	incoming := make(chan sockparty.Incoming)
 	joins := make(chan string)
 	leaves := make(chan string)
-	party := sockparty.New("Party", incoming, joins, leaves, sockparty.DefaultOptions())
+	party := sockparty.New(generateUID, incoming, joins, leaves, sockparty.DefaultOptions())
 
 	/* Simple chat, take each message, validate it, and broadcast it back out. */
 	go func() {

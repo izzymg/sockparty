@@ -4,9 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"math/rand"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"nhooyr.io/websocket/wsjson"
 
@@ -18,13 +21,18 @@ import (
 
 type testGenerator func() (http.Handler, func(t *testing.T))
 
+func GenerateUID() (string, error) {
+	rand.Seed(time.Now().Unix())
+	return fmt.Sprintf("%X", rand.Uint64()), nil
+}
+
 // Test party's serving of new users
 func GenAddUser() (http.Handler, func(t *testing.T)) {
 
 	incoming := make(chan sockparty.Incoming)
 	join := make(chan string)
 	leave := make(chan string)
-	party := sockparty.New("", incoming, join, leave, noPing())
+	party := sockparty.New(GenerateUID, incoming, join, leave, noPing())
 
 	return party, func(t *testing.T) {
 		// Generic request
@@ -92,7 +100,7 @@ func GenAddUser() (http.Handler, func(t *testing.T)) {
 func GenEchoServer() (http.Handler, func(t *testing.T)) {
 	// Create a party to echo messages back
 	incoming := make(chan sockparty.Incoming)
-	party := sockparty.New("", incoming, nil, nil, noPing())
+	party := sockparty.New(GenerateUID, incoming, nil, nil, noPing())
 
 	return party, func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
@@ -170,7 +178,7 @@ func GenEchoServer() (http.Handler, func(t *testing.T)) {
 }
 
 func GenEndParty() (http.Handler, func(t *testing.T)) {
-	party := sockparty.New("", nil, nil, nil, noPing())
+	party := sockparty.New(GenerateUID, nil, nil, nil, noPing())
 
 	return party, func(t *testing.T) {
 
@@ -203,7 +211,7 @@ func GenEndParty() (http.Handler, func(t *testing.T)) {
 func GenMessageUser() (http.Handler, func(t *testing.T)) {
 	inc := make(chan sockparty.Incoming)
 	join := make(chan string)
-	party := sockparty.New("", inc, join, nil, noPing())
+	party := sockparty.New(GenerateUID, inc, join, nil, noPing())
 
 	return party, func(t *testing.T) {
 		message := &sockparty.Outgoing{
@@ -237,7 +245,7 @@ func GenMessageUser() (http.Handler, func(t *testing.T)) {
 
 // Test messaging to all users
 func GenBroadcast() (http.Handler, func(t *testing.T)) {
-	party := sockparty.New("", nil, nil, nil, noPing())
+	party := sockparty.New(GenerateUID, nil, nil, nil, noPing())
 
 	return party, func(t *testing.T) {
 		message := &sockparty.Outgoing{
@@ -320,7 +328,7 @@ func TestEndToEnds(t *testing.T) {
 
 // Test messaging to an invalid user returns an error
 func TestNoSuchUser(t *testing.T) {
-	party := sockparty.New("", nil, nil, nil, noPing())
+	party := sockparty.New(GenerateUID, nil, nil, nil, noPing())
 	err := party.Message(context.Background(), "nosuchuseridontexist", &sockparty.Outgoing{})
 	if err != sockparty.ErrNoSuchUser {
 		t.Fatalf("Expected no such user, got: %v", err)
