@@ -192,21 +192,22 @@ func GenBroadcaster(connCount int, msgCount int) func(t *testing.T) {
 
 		var received uint32
 		var wg sync.WaitGroup
+		wg.Add(connCount)
 		// For n connections, read n messages
 		for _, conn := range conns {
 			go func(c *websocket.Conn) {
-				wg.Add(1)
 				for i := 0; i < msgCount; i++ {
 					c.ReadMessage()
 					atomic.AddUint32(&received, 1)
 				}
+				// Set done when read all messages
 				wg.Done()
 			}(conn)
 		}
 
 		// Broadcast n messages
 		for i := 0; i < msgCount; i++ {
-			party.Broadcast(context.Background(), &sockparty.Outgoing{
+			go party.Broadcast(context.Background(), &sockparty.Outgoing{
 				Event:   "msg",
 				Payload: "broadcasting~",
 			})
