@@ -18,49 +18,52 @@ type TestMessage struct {
 const addr = "ws://localhost:3000"
 
 func TestEndToEnd(t *testing.T) {
-	incoming := make(chan sockparty.Incoming)
-	party := sockparty.New(generateUID, incoming, &sockparty.Options{
-		PingFrequency:    0,
-		AllowCrossOrigin: true,
-	})
+
+	var party *sockparty.Party
+	var incoming chan sockparty.Incoming
 
 	is := is.New(t)
 
-	t.Run("Dial", func(t *testing.T) {
-		d := wstest.NewDialer(party)
-		c, resp, err := d.Dial(addr, nil)
-		defer c.Close()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if resp.StatusCode != http.StatusSwitchingProtocols {
-			t.Fatalf("Expected status 101, got %d", resp.StatusCode)
-		}
-	})
+	var tests = map[string]func(t *testing.T){
+		"Dial": func(t *testing.T) {
+			d := wstest.NewDialer(party)
+			c, resp, err := d.Dial(addr, nil)
+			is.NoErr(err)
+			defer c.Close()
 
-	t.Run("Send", func(t *testing.T) {
-		d := wstest.NewDialer(party)
-		c, _, err := d.Dial(addr, nil)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer c.Close()
+			if resp.StatusCode != http.StatusSwitchingProtocols {
+				t.Fatalf("Expected status 101, got %d", resp.StatusCode)
+			}
+		},
 
-		err = c.WriteJSON(&TestMessage{"Echo"})
-		if err != nil {
-			t.Fatal(err)
-		}
-	})
+		"Send": func(t *testing.T) {
+			d := wstest.NewDialer(party)
+			c, _, err := d.Dial(addr, nil)
+			is.NoErr(err)
+			defer c.Close()
 
-	t.Run("End", func(t *testing.T) {
-		d := wstest.NewDialer(party)
-		c, _, err := d.Dial(addr, nil)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer c.Close()
-		is.True(party.GetConnectedUserCount() > 0)
-		party.End("Bye")
-		is.Equal(party.GetConnectedUserCount(), 0)
-	})
+			err = c.WriteJSON(&TestMessage{"Echo"})
+			is.NoErr(err)
+		},
+
+		"End": func(t *testing.T) {
+			d := wstest.NewDialer(party)
+			c, _, err := d.Dial(addr, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer c.Close()
+			party.End("Bye")
+			is.Equal(party.GetConnectedUserCount(), 0)
+		},
+	}
+
+	for name, test := range tests {
+		incoming = make(chan sockparty.Incoming)
+		party = sockparty.New(generateUID, incoming, &sockparty.Options{
+			PingFrequency:    0,
+			AllowCrossOrigin: true,
+		})
+		t.Run(name, test)
+	}
 }
