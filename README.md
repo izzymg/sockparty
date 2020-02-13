@@ -1,6 +1,6 @@
 # SockParty 💬
 [![Build status](https://api.travis-ci.org/izzymg/sockparty.svg?branch=master)](https://github.com/izzymg/releases)
-[![codecov](https://codecov.io/gh/izzymg/sockparty/branch/dev/graph/badge.svg)](https://codecov.io/gh/izzymg/sockparty)
+[![codecov](https://codecov.io/gh/izzymg/sockparty/branch/master/graph/badge.svg)](https://codecov.io/gh/izzymg/sockparty)
 
 SockParty is a WebSocket room manager for Golang. Allows creation of rooms, which manage WebSocket connections and an API to communicate with them. This library does *not* use gorilla/websocket.
 
