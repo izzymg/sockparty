@@ -2,6 +2,7 @@
 package sockparty_test
 
 import (
+	"context"
 	"net/http"
 	"testing"
 	"time"
@@ -90,8 +91,9 @@ func TestJoin(t *testing.T) {
 	})
 
 	d := wstest.NewDialer(party)
-	_, _, err := d.Dial(addr, nil)
+	c, _, err := d.Dial(addr, nil)
 	is.NoErr(err)
+	defer c.Close()
 
 	// Wait for join
 	select {
@@ -99,5 +101,44 @@ func TestJoin(t *testing.T) {
 		return
 	case <-time.After(time.Second * 3):
 		t.Fatal("Timeout waiting for user join event")
+	}
+}
+
+func TestPartyMessage(t *testing.T) {
+	is := is.New(t)
+
+	getID := make(chan string)
+	onJoin := func(id string) {
+		// dont block
+		go func() {
+			getID <- id
+		}()
+	}
+
+	incoming := make(chan sockparty.Incoming)
+	party := sockparty.New(generateUID, incoming, &sockparty.Options{
+		PingFrequency:   0,
+		UserJoinHandler: onJoin,
+	})
+
+	d := wstest.NewDialer(party)
+	c, _, err := d.Dial(addr, nil)
+	// Call read message so
+	go c.ReadMessage()
+	is.NoErr(err)
+	defer c.Close()
+
+	select {
+	case id := <-getID:
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+		defer cancel()
+		err := party.Message(ctx, id, &sockparty.Outgoing{
+			Event:   "msg",
+			Payload: "Hello",
+		})
+		is.NoErr(err)
+		return
+	case <-time.After(time.Second * 5):
+		t.Fatal("Timeout waiting for ID")
 	}
 }
