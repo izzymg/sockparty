@@ -3,10 +3,15 @@ package sockparty_test
 
 import (
 	"context"
+	"fmt"
 	"net/http"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/gorilla/websocket"
 	"github.com/matryer/is"
 
 	"github.com/izzymg/sockparty"
@@ -18,6 +23,15 @@ type TestMessage struct {
 }
 
 const addr = "ws://localhost:3000"
+
+// Random ID generator for users. This could come from a database for logins, etc.
+func generateUID() (string, error) {
+	uid, err := uuid.NewRandom()
+	if err != nil {
+		return "", err
+	}
+	return uid.String(), nil
+}
 
 func TestEndToEnd(t *testing.T) {
 
@@ -109,10 +123,7 @@ func TestPartyMessage(t *testing.T) {
 
 	getID := make(chan string)
 	onJoin := func(id string) {
-		// dont block
-		go func() {
-			getID <- id
-		}()
+		getID <- id
 	}
 
 	incoming := make(chan sockparty.Incoming)
@@ -140,5 +151,81 @@ func TestPartyMessage(t *testing.T) {
 		return
 	case <-time.After(time.Second * 5):
 		t.Fatal("Timeout waiting for ID")
+	}
+}
+
+func makeConnections(n int, h http.Handler) ([]*websocket.Conn, func(), error) {
+	conns := make([]*websocket.Conn, n)
+	cleanup := func() {
+		for _, conn := range conns {
+			if conn != nil {
+				conn.Close()
+			}
+		}
+	}
+
+	for i := 0; i < n; i++ {
+		d := wstest.NewDialer(h)
+		<-time.After(time.Millisecond * 200)
+		c, _, err := d.Dial(addr, nil)
+		if err != nil {
+			cleanup()
+			return nil, nil, fmt.Errorf("Failed to dial conn n:%d, %v", i, err)
+		}
+		conns[i] = c
+	}
+	return conns, cleanup, nil
+}
+
+func GenBroadcaster(connCount int, msgCount int) func(t *testing.T) {
+	return func(t *testing.T) {
+		is := is.New(t)
+		incoming := make(chan sockparty.Incoming)
+		party := sockparty.New(generateUID, incoming, &sockparty.Options{
+			PingFrequency: 0,
+		})
+
+		// Make n conns
+		conns, cleanup, err := makeConnections(connCount, party)
+		is.NoErr(err)
+		defer cleanup()
+
+		var received uint32
+		var wg sync.WaitGroup
+		// For n connections, read n messages
+		for _, conn := range conns {
+			go func(c *websocket.Conn) {
+				wg.Add(1)
+				for i := 0; i < msgCount; i++ {
+					c.ReadMessage()
+					atomic.AddUint32(&received, 1)
+				}
+				wg.Done()
+			}(conn)
+		}
+
+		// Broadcast n messages
+		for i := 0; i < msgCount; i++ {
+			party.Broadcast(context.Background(), &sockparty.Outgoing{
+				Event:   "msg",
+				Payload: "broadcasting~",
+			})
+		}
+
+		wg.Wait()
+		is.Equal(received, uint32(connCount*msgCount))
+	}
+}
+
+func TestBroadcast(t *testing.T) {
+	var tests = map[string]func(t *testing.T){
+		"2, 5":  GenBroadcaster(2, 5),
+		"4, 2":  GenBroadcaster(4, 2),
+		"3, 30": GenBroadcaster(3, 30),
+		"1, 8":  GenBroadcaster(1, 8),
+	}
+
+	for name, test := range tests {
+		t.Run(name, test)
 	}
 }
