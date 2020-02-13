@@ -8,6 +8,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/izzymg/sockparty"
 	"golang.org/x/time/rate"
 	"nhooyr.io/websocket"
@@ -17,6 +18,15 @@ import (
 type testMessage struct {
 	Event   string `json:"event"`
 	Payload string `json:"payload"`
+}
+
+// Random ID generator for users. This could come from a database for logins, etc.
+func generateUID() (string, error) {
+	uid, err := uuid.NewRandom()
+	if err != nil {
+		return "", err
+	}
+	return uid.String(), nil
 }
 
 // Returns error if the test message is not equal to the outgoing message.
