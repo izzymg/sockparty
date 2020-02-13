@@ -5,14 +5,19 @@ import (
 	"encoding/json"
 	"fmt"
 	"html"
+	"math/rand"
 	"net/http"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/izzymg/sockparty"
 )
 
 /* Chat room example with SockParty */
+
+func generateUID() (string, error) {
+	rand.Seed(time.Now().Unix())
+	return fmt.Sprintf("%X", rand.Uint64()), nil
+}
 
 func main() {
 
@@ -25,9 +30,9 @@ func main() {
 	/* Setup a new party. All incoming messages from party users
 	will be passed through the incoming channels. */
 	incoming := make(chan sockparty.Incoming)
-	joins := make(chan uuid.UUID)
-	leaves := make(chan uuid.UUID)
-	party := sockparty.New("Party", incoming, joins, leaves, sockparty.DefaultOptions())
+	joins := make(chan string)
+	leaves := make(chan string)
+	party := sockparty.New(generateUID, incoming, joins, leaves, sockparty.DefaultOptions())
 
 	/* Simple chat, take each message, validate it, and broadcast it back out. */
 	go func() {
