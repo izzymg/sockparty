@@ -230,3 +230,26 @@ func TestBroadcast(t *testing.T) {
 		t.Run(name, test)
 	}
 }
+
+func TestUserExists(t *testing.T) {
+
+	is := is.New(t)
+	var wg sync.WaitGroup
+	wg.Add(1)
+
+	opts := &sockparty.Options{
+		PingFrequency: 0,
+	}
+	incoming := make(chan sockparty.Incoming)
+	party := sockparty.New(generateUID, incoming, opts)
+	opts.UserJoinHandler = func(id string) {
+		is.True(party.UserExists(id))
+		is.Equal(party.UserExists("idontexist"), false)
+		wg.Done()
+	}
+
+	_, cleanup, err := makeConnections(1, party)
+	is.NoErr(err)
+	defer cleanup()
+	wg.Wait()
+}

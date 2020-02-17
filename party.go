@@ -103,6 +103,14 @@ func (party *Party) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	}
 }
 
+// UserExists returns true if the user's ID was matched in this party.
+func (party *Party) UserExists(userID string) bool {
+	party.mut.RLock()
+	defer party.mut.RUnlock()
+	_, ok := party.connectedUsers[userID]
+	return ok
+}
+
 // GetConnectedUserCount returns the number of currently connected users.
 func (party *Party) GetConnectedUserCount() int {
 	party.mut.RLock()
