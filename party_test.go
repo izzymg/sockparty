@@ -253,3 +253,47 @@ func TestUserExists(t *testing.T) {
 	defer cleanup()
 	wg.Wait()
 }
+
+func TestGetUserIDs(t *testing.T) {
+	is := is.New(t)
+
+	opts := &sockparty.Options{PingFrequency: 0}
+
+	party := sockparty.New(generateUID, make(chan sockparty.Incoming), opts)
+
+	// Collect a list of all joined users.
+	var userIDs []string
+	var wg sync.WaitGroup
+
+	opts.UserJoinHandler = func(userID string) {
+		userIDs = append(userIDs, userID)
+		wg.Done()
+	}
+
+	// Add n users
+	userCount := 5
+	wg.Add(userCount)
+	_, cleanup, err := makeConnections(userCount, party)
+	is.NoErr(err)
+	defer cleanup()
+
+	// Wait for all users to join
+	wg.Wait()
+
+	fetchedIDs := party.GetConnectedUserIDs()
+
+	// Ensure each ID in userIDs is contained in fetched IDs
+	is.Equal(len(fetchedIDs), len(userIDs))
+	for userId := range userIDs {
+		found := false
+		for fetchedID := range fetchedIDs {
+			if userId == fetchedID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			is.Fail()
+		}
+	}
+}

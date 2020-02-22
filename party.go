@@ -111,6 +111,22 @@ func (party *Party) UserExists(userID string) bool {
 	return ok
 }
 
+/*
+GetConnectedUserIDs returns a list of all currently connected user's IDs,
+this is O(n). */
+func (party *Party) GetConnectedUserIDs() []string {
+	party.mut.RLock()
+	defer party.mut.RUnlock()
+
+	userIDs := make([]string, len(party.connectedUsers))
+	i := 0
+	for id := range party.connectedUsers {
+		userIDs[i] = id
+		i++
+	}
+	return userIDs
+}
+
 // GetConnectedUserCount returns the number of currently connected users.
 func (party *Party) GetConnectedUserCount() int {
 	party.mut.RLock()
