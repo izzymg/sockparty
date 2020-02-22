@@ -117,7 +117,9 @@ func (usr *user) handleIncoming(ctx context.Context) error {
 			usr.close(disconnect)
 			return err
 		}
-		usr.incoming <- *message
+		if usr.incoming != nil {
+			usr.incoming <- *message
+		}
 	}
 }
 

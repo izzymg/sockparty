@@ -26,10 +26,9 @@ UserUpdateChannel is a channel sending a user's ID, used informing user joins & 
 type UserUpdateChannel chan string
 
 // New creates a new room for users to join.
-func New(uidGenerator UniqueIDGenerator, incoming chan Incoming, options *Options) *Party {
+func New(uidGenerator UniqueIDGenerator, options *Options) *Party {
 	return &Party{
 		UIDGenerator: uidGenerator,
-		Incoming:     incoming,
 		ErrorHandler: func(e error) {},
 
 		opts:           options,
@@ -43,13 +42,12 @@ type Party struct {
 	Name         string
 	UIDGenerator UniqueIDGenerator
 
-	Incoming chan Incoming
-
 	// Called when an error occurs within the party.
 	ErrorHandler func(err error)
 
 	userJoinChannel  UserUpdateChannel
 	userLeaveChannel UserUpdateChannel
+	incoming         chan Incoming
 
 	opts           *Options
 	connectedUsers map[string]*user
@@ -81,7 +79,7 @@ func (party *Party) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	}
 	usr := newUser(
 		uid,
-		party.Incoming,
+		party.incoming,
 		conn,
 		party.opts,
 	)
@@ -165,6 +163,15 @@ func (party *Party) End(message string) {
 		user.close(message)
 		delete(party.connectedUsers, user.ID)
 	}
+}
+
+/*
+RegisterIncoming registers the channel to be used for all incoming user messages,
+replacing the previous if any; this is a fan-in style API, if there is no receiver,
+the party will block.
+*/
+func (party *Party) RegisterIncoming(ch chan Incoming) {
+	party.incoming = ch
 }
 
 /*
