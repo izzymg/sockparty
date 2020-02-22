@@ -263,11 +263,15 @@ func TestGetUserIDs(t *testing.T) {
 
 	// Collect a list of all joined users.
 	var userIDs []string
+	var mut sync.Mutex
 	var wg sync.WaitGroup
 
 	opts.UserJoinHandler = func(userID string) {
+		// UserJoinHandler will be called from many goroutines.
+		mut.Lock()
+		defer mut.Unlock()
+		defer wg.Done()
 		userIDs = append(userIDs, userID)
-		wg.Done()
 	}
 
 	// Add n users
