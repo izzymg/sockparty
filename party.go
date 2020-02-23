@@ -20,11 +20,6 @@ If an error is returned, the user will be disconnected.
 */
 type UniqueIDGenerator func() (string, error)
 
-/*
-UserUpdateChannel is a channel sending a user's ID, used informing user joins & leaves.
-*/
-type UserUpdateChannel chan string
-
 // New creates a new room for users to join.
 func New(uidGenerator UniqueIDGenerator, options *Options) *Party {
 	return &Party{
@@ -45,8 +40,8 @@ type Party struct {
 	// Called when an error occurs within the party.
 	ErrorHandler func(err error)
 
-	userJoinChannel  UserUpdateChannel
-	userLeaveChannel UserUpdateChannel
+	userJoinChannel  chan string
+	userLeaveChannel chan string
 	incoming         chan Incoming
 
 	opts           *Options
@@ -180,7 +175,7 @@ when a user has joined, replacing the previous if any; if registered, the consum
 must listen on it to avoid blocking the party. When this is sent into, the user has
 already joined the party, and is valid to message.
 */
-func (party *Party) RegisterOnUserJoined(ch UserUpdateChannel) {
+func (party *Party) RegisterOnUserJoined(ch chan string) {
 	party.userJoinChannel = ch
 }
 
@@ -190,7 +185,7 @@ when a user has left the party, replacing the previous if any; if registered, th
 must listen on it to avoid blocking the party. When this is sent into, the user has already
 left the party, and is no longer valid to message.
 */
-func (party *Party) RegisterOnUserLeft(ch UserUpdateChannel) {
+func (party *Party) RegisterOnUserLeft(ch chan string) {
 	party.userLeaveChannel = ch
 }
 
