@@ -30,18 +30,41 @@ type ChatMessage struct {
 
 // ChatApp is an example chat application built with Sockparty.
 type ChatApp struct {
-	Party *sockparty.Party
+	Party    *sockparty.Party
+	Incoming chan sockparty.Incoming
+	Joined   chan string
+	Leave    chan string
 }
 
 // Run begins handling incoming messages, blocking.
 func (ca *ChatApp) Run(ctx context.Context) {
 	for {
 		select {
+		// Exit when context expires
 		case <-ctx.Done():
-			// Exit when context expires
 			fmt.Println("Bye!")
 			return
-		case message := <-ca.Party.Incoming:
+
+		// Broadcast user joins, and send a welcome message
+		case userID := <-ca.Joined:
+			// No need to pass a struct in
+			ca.Party.Message(ctx, userID, &sockparty.Outgoing{
+				Event:   "welcome",
+				Payload: "Welcome!",
+			})
+			ca.Party.Broadcast(ctx, &sockparty.Outgoing{
+				Event:   "user_join",
+				Payload: fmt.Sprintf("User %q joined", userID),
+			})
+
+		// Broadcast user leaves
+		case userID := <-ca.Leave:
+			ca.Party.Broadcast(ctx, &sockparty.Outgoing{
+				Event:   "user_leave",
+				Payload: fmt.Sprintf("User %q left", userID),
+			})
+		// Broadcast chat messages back to users after validating.
+		case message := <-ca.Incoming:
 			// Check message type
 			if message.Event != "chat_message" {
 				continue
@@ -51,14 +74,14 @@ func (ca *ChatApp) Run(ctx context.Context) {
 			err := json.Unmarshal(message.Payload, parsedMessage)
 			if err != nil {
 				// Send invalid payload error
-				ca.Party.Message(context.TODO(), message.UserID, &sockparty.Outgoing{
+				ca.Party.Message(ctx, message.UserID, &sockparty.Outgoing{
 					Event:   "error",
 					Payload: "Invalid JSON",
 				})
 			}
 
-			// Broadcast the data back out to users.
-			ca.Party.Broadcast(context.TODO(), &sockparty.Outgoing{
+			// Broadcast the data back out to users, sanitized for a web app.
+			ca.Party.Broadcast(ctx, &sockparty.Outgoing{
 				Event: "chat_message",
 				Payload: ChatMessage{
 					Body: html.EscapeString(parsedMessage.Body),
@@ -68,50 +91,38 @@ func (ca *ChatApp) Run(ctx context.Context) {
 	}
 }
 
-// OnUserJoin broadcasts user join notifications
-func (ca *ChatApp) OnUserJoin(id string) {
-	// Broadcast user joining
-	fmt.Printf("User %s joined the party, connected %d\n", id, ca.Party.GetConnectedUserCount())
-	ca.Party.Broadcast(context.Background(), &sockparty.Outgoing{
-		Payload: ChatMessage{
-			Body: fmt.Sprintf("User %s joined the party", id),
-		},
-	})
-}
-
-// OnUserLeave broadcasts user leave notifications
-func (ca *ChatApp) OnUserLeave(id string) {
-	// Broadcast user joining
-	fmt.Printf("User %s left the party, connected %d\n", id, ca.Party.GetConnectedUserCount())
-	ca.Party.Broadcast(context.Background(), &sockparty.Outgoing{
-		Payload: ChatMessage{
-			Body: fmt.Sprintf("User %s left the party", id),
-		},
-	})
-}
+/*
+This is an example chat application using SockParty. It takes messages from users,
+parses them as JSON, and broadcasts them back to users.
+*/
 
 func main() {
 
-	// It's up to the consumer to make the channel, so you can configure buffer size, etc.
-	incoming := make(chan sockparty.Incoming)
-
-	var app ChatApp
 	// Create a new sockparty, which implements http.Handler to upgrade requests to WebSocket.
-	party := sockparty.New(generateUID, incoming, &sockparty.Options{
-		UserJoinHandler:  app.OnUserJoin,
-		UserLeaveHandler: app.OnUserLeave,
-	})
+	app := ChatApp{
+		Party:    sockparty.New(generateUID, sockparty.DefaultOptions()),
+		Incoming: make(chan sockparty.Incoming),
+		Joined:   make(chan string),
+		Leave:    make(chan string),
+	}
 
+	/* It's up to the consumer to make the channels, so you can configure buffer size, etc.
+	If you don't register these channels, messages will simply be discarded, so make sure
+	to register the incoming channel before allowing any connections. */
+	app.Party.RegisterIncoming(app.Incoming)
+	app.Party.RegisterOnUserJoined(app.Joined)
+	app.Party.RegisterOnUserLeft(app.Leave)
+
+	// Run the app for 2 minutes, then shut it down gracefully.
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute*2)
-	app.Party = party
 	go app.Run(ctx)
 
 	/* Party implements http.Handler and will treat requests as a new user
-	joining the party by upgrading them to WebSocket. You could wrap this by calling
-	ServeHTTP directly from within a handler. */
+	joining the party by upgrading them to WebSocket. You could wrap this
+	by calling ServeHTTP directly from within a handler, to verify incoming requests. */
 	server := http.Server{
 		Addr:    "localhost:3000",
-		Handler: party,
+		Handler: app.Party,
 	}
 	go server.ListenAndServe()
 
@@ -119,7 +130,8 @@ func main() {
 	select {
 	case <-ctx.Done():
 		cancel()
-		party.End("Party is over folks")
+		// You could also shut the party down with a nice message to connected users.
+		app.Party.End("Party is over folks")
 		server.Shutdown(ctx)
 		return
 	}

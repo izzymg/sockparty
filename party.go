@@ -21,18 +21,14 @@ If an error is returned, the user will be disconnected.
 type UniqueIDGenerator func() (string, error)
 
 /*
-UserUpdateHandler is called to send info about a user, e.g on join or leave.
-These handlers will be called on the same thread as the connection is on,
-meaning they will block future actions. If long running work is needed from this
-callback, spawn a new goroutine.
+UserUpdateChannel is a channel sending a user's ID, used informing user joins & leaves.
 */
-type UserUpdateHandler func(userID string)
+type UserUpdateChannel chan string
 
 // New creates a new room for users to join.
-func New(uidGenerator UniqueIDGenerator, incoming chan Incoming, options *Options) *Party {
+func New(uidGenerator UniqueIDGenerator, options *Options) *Party {
 	return &Party{
 		UIDGenerator: uidGenerator,
-		Incoming:     incoming,
 		ErrorHandler: func(e error) {},
 
 		opts:           options,
@@ -46,10 +42,12 @@ type Party struct {
 	Name         string
 	UIDGenerator UniqueIDGenerator
 
-	Incoming chan Incoming
-
 	// Called when an error occurs within the party.
 	ErrorHandler func(err error)
+
+	userJoinChannel  UserUpdateChannel
+	userLeaveChannel UserUpdateChannel
+	incoming         chan Incoming
 
 	opts           *Options
 	connectedUsers map[string]*user
@@ -81,7 +79,7 @@ func (party *Party) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	}
 	usr := newUser(
 		uid,
-		party.Incoming,
+		party.incoming,
 		conn,
 		party.opts,
 	)
@@ -167,17 +165,46 @@ func (party *Party) End(message string) {
 	}
 }
 
+/*
+RegisterIncoming registers the channel to be used for all incoming user messages,
+replacing the previous if any; this is a fan-in style API, if there is no receiver,
+the party will block.
+*/
+func (party *Party) RegisterIncoming(ch chan Incoming) {
+	party.incoming = ch
+}
+
+/*
+RegisterOnUserJoined registers the channel to be used for sending user information
+when a user has joined, replacing the previous if any; if registered, the consumer
+must listen on it to avoid blocking the party. When this is sent into, the user has
+already joined the party, and is valid to message.
+*/
+func (party *Party) RegisterOnUserJoined(ch UserUpdateChannel) {
+	party.userJoinChannel = ch
+}
+
+/*
+RegisterOnUserLeft registers the channel to be used for sending user information
+when a user has left the party, replacing the previous if any; if registered, the consumer
+must listen on it to avoid blocking the party. When this is sent into, the user has already
+left the party, and is no longer valid to message.
+*/
+func (party *Party) RegisterOnUserLeft(ch UserUpdateChannel) {
+	party.userLeaveChannel = ch
+}
+
 /* Write locks should be released before callbacks,
 to prevent deadlocking if callback attempts to read or write. */
 
-// Removethe user from the party's list. Dumb op.
+// Remove the user from the party's list, and run callbacks.
 func (party *Party) removeUser(id string) error {
 	party.mut.Lock()
 	if user, ok := party.connectedUsers[id]; ok {
 		delete(party.connectedUsers, user.ID)
 		party.mut.Unlock()
-		if party.opts.UserLeaveHandler != nil {
-			party.opts.UserLeaveHandler(id)
+		if party.userLeaveChannel != nil {
+			party.userLeaveChannel <- id
 		}
 		return nil
 	}
@@ -185,13 +212,13 @@ func (party *Party) removeUser(id string) error {
 	return ErrNoSuchUser
 }
 
-// Add a user to the party's list. Dumb op.
+// Add a user to the party's list, and run callbacks.
 func (party *Party) addUser(usr *user) {
 	party.mut.Lock()
 	party.connectedUsers[usr.ID] = usr
 	party.mut.Unlock()
 
-	if party.opts.UserJoinHandler != nil {
-		party.opts.UserJoinHandler(usr.ID)
+	if party.userJoinChannel != nil {
+		party.userJoinChannel <- usr.ID
 	}
 }
